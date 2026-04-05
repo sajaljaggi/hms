@@ -53,7 +53,7 @@ export default function Home() {
               <a href="#about" className="text-gray-600 hover:text-teal-600 transition">About Us</a>
               <a href="#gallery" className="text-gray-600 hover:text-teal-600 transition">Gallery</a>
               <a href="#contact" className="text-gray-600 hover:text-teal-600 transition">Contact Us</a>
-              <a href="#logins" className="text-gray-600 hover:text-teal-600 transition">Logins</a>
+              <a href="#logins" className="text-gray-600 hover:text-teal-600 transition">Login</a>
               <Link to="/login" state={{ role: 'patient', redirectTo: '/patient/book' }} className="bg-teal-500 hover:bg-teal-600 text-white px-5 py-2.5 shadow-sm transition">
                 Book an Appointment
               </Link>
@@ -122,7 +122,7 @@ export default function Home() {
       {/* Logins Section */}
       <section id="logins" className="py-20 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-center text-gray-700 mb-16">Logins</h2>
+          <h2 className="text-3xl font-bold text-center text-gray-700 mb-16">Login</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {logins.map((login, idx) => (
               <div key={idx} className="bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow border border-gray-100 flex flex-col">

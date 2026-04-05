@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Calendar, Clock, Download, AlertCircle } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { Calendar, Clock, Download, AlertCircle, Search, Filter, X } from 'lucide-react';
 import { patientService } from '../../services/patientService';
-import { format } from 'date-fns';
+import { format, parse, addMinutes } from 'date-fns';
 
 interface Appointment {
   id: number; status: string; date: string; time: string;
@@ -15,10 +15,20 @@ const statusColors: Record<string, string> = {
   cancelled: 'bg-red-100 text-red-700',
 };
 
+const formatSlotRange = (timeStr: string) => {
+  try {
+    const start = parse(timeStr, 'HH:mm:ss', new Date());
+    const end = addMinutes(start, 15);
+    return `${format(start, 'h:mm a')} - ${format(end, 'h:mm a')}`;
+  } catch { return timeStr; }
+};
+
 export default function History() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
+  const [searchSpec, setSearchSpec] = useState('');
+  const [searchDate, setSearchDate] = useState('');
 
   useEffect(() => {
     patientService.getAppointments()
@@ -27,9 +37,69 @@ export default function History() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Derive unique specializations for the dropdown
+  const specializations = useMemo(() => {
+    const unique = [...new Set(appointments.map(a => a.specialization))];
+    return unique.sort();
+  }, [appointments]);
+
+  const filtered = useMemo(() => appointments.filter(appt => {
+    const specMatch = searchSpec ? appt.specialization === searchSpec : true;
+    const dateMatch = searchDate ? appt.date.startsWith(searchDate) : true;
+    return specMatch && dateMatch;
+  }), [appointments, searchSpec, searchDate]);
+
+  const hasFilters = searchSpec || searchDate;
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Appointment History</h1>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-2xl font-bold text-gray-900">Appointment History</h1>
+        <span className="text-sm text-gray-500">{filtered.length} of {appointments.length} appointments</span>
+      </div>
+
+      {/* Search & Filter Bar */}
+      <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
+        <div className="flex flex-wrap gap-3 items-end">
+          {/* Filter by Specialization */}
+          <div className="flex-1 min-w-[180px]">
+            <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1">
+              <Filter className="w-3.5 h-3.5" /> Specialization
+            </label>
+            <select
+              value={searchSpec}
+              onChange={e => setSearchSpec(e.target.value)}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent transition"
+            >
+              <option value="">All Specializations</option>
+              {specializations.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          {/* Filter by Date */}
+          <div className="flex-1 min-w-[180px]">
+            <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5" /> Date
+            </label>
+            <input
+              type="date"
+              value={searchDate}
+              onChange={e => setSearchDate(e.target.value)}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent transition"
+            />
+          </div>
+
+          {/* Clear Button */}
+          {hasFilters && (
+            <button
+              onClick={() => { setSearchSpec(''); setSearchDate(''); }}
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-red-500 border border-gray-200 hover:border-red-200 rounded-lg px-3 py-2.5 transition"
+            >
+              <X className="w-4 h-4" /> Clear
+            </button>
+          )}
+        </div>
+      </div>
 
       {error && (
         <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-lg p-3">
@@ -39,16 +109,16 @@ export default function History() {
 
       {loading && <p className="text-gray-400 text-sm">Loading…</p>}
 
-      {!loading && appointments.length === 0 && (
+      {!loading && filtered.length === 0 && (
         <div className="bg-white rounded-xl border border-gray-100 p-12 text-center text-gray-400">
-          <Calendar className="mx-auto w-10 h-10 mb-2 opacity-40" />
-          <p>No appointment history yet.</p>
+          <Search className="mx-auto w-10 h-10 mb-2 opacity-40" />
+          <p>{hasFilters ? 'No appointments match your filters.' : 'No appointment history yet.'}</p>
         </div>
       )}
 
       <div className="space-y-4">
-        {appointments.map(appt => (
-          <div key={appt.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        {filtered.map(appt => (
+          <div key={appt.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
             <div className="flex flex-wrap justify-between items-start gap-4">
               <div>
                 <p className="font-semibold text-gray-900 text-base">{appt.specialization}</p>
@@ -60,7 +130,7 @@ export default function History() {
                   </span>
                   <span className="flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5" />
-                    {appt.time}
+                    {formatSlotRange(appt.time)}
                   </span>
                 </div>
               </div>
