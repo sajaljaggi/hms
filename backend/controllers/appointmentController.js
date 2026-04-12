@@ -6,9 +6,13 @@ const getDoctors = async (req, res, next) => {
     const { specialization } = req.query;
 
     let sql = `
-      SELECT d.id, u.name, d.specialization, d.fees, u.email
+      SELECT
+        d.id, u.name, d.specialization, d.fees, u.email,
+        ROUND(AVG(dr.rating), 1)  AS avg_rating,
+        COUNT(dr.id)              AS rating_count
       FROM doctors d
       JOIN users u ON d.user_id = u.id
+      LEFT JOIN doctor_ratings dr ON dr.doctor_id = d.id
     `;
     const params = [];
 
@@ -17,7 +21,7 @@ const getDoctors = async (req, res, next) => {
       params.push(specialization);
     }
 
-    sql += ' ORDER BY u.name ASC';
+    sql += ' GROUP BY d.id, u.name, d.specialization, d.fees, u.email ORDER BY u.name ASC';
 
     const [rows] = await db.query(sql, params);
     res.json({ success: true, data: rows });
