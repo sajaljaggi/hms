@@ -9,6 +9,7 @@ const patientRoutes     = require('./routes/patientRoutes');
 const doctorRoutes      = require('./routes/doctorRoutes');
 const appointmentRoutes = require('./routes/appointmentRoutes');
 const adminRoutes       = require('./routes/adminRoutes');
+const chatbotRoutes     = require('./routes/chatbotRoutes');
 const morgan            = require('morgan');
 
 // Error handler middleware
@@ -35,6 +36,7 @@ app.use('/api/patient', patientRoutes);
 app.use('/api/doctor',  doctorRoutes);
 app.use('/api',         appointmentRoutes); // /api/doctors, /api/slots, /api/appointments/book
 app.use('/api/admin',   adminRoutes);
+app.use('/api/chatbot', chatbotRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
