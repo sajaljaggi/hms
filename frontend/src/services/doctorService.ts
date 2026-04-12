@@ -14,4 +14,7 @@ export const doctorService = {
 
   createSlots: (slots: { date: string; time: string }[]) =>
     api.post('/doctor/slots', { slots }),
+
+  getDashboardStats: () =>
+    api.get('/doctor/dashboard'),
 };

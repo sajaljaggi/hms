@@ -138,4 +138,67 @@ const createSlots = async (req, res, next) => {
   }
 };
 
-module.exports = { getAppointments, updateAppointmentStatus, createPrescription, createSlots };
+// ─── GET /api/doctor/dashboard ──────────────────────────────────────────────
+const getDashboardStats = async (req, res, next) => {
+  try {
+    const doctorId = await getDoctorId(req.user.id);
+
+    // 1. Total Patients (Unique)
+    const [patientRows] = await db.query(
+      'SELECT COUNT(DISTINCT patient_id) as total FROM appointments WHERE doctor_id = ?',
+      [doctorId]
+    );
+
+    // 2. Upcoming Appointments (Pending & Future)
+    const [upcomingRows] = await db.query(
+      `SELECT COUNT(*) as total 
+       FROM appointments a 
+       JOIN doctor_slots ds ON a.slot_id = ds.id 
+       WHERE a.doctor_id = ? AND a.status = 'pending'
+       AND (ds.date > CURRENT_DATE OR (ds.date = CURRENT_DATE AND ds.time >= CURRENT_TIME))`,
+      [doctorId]
+    );
+
+    // 3. Pending Prescriptions (Finished appointments without prescription)
+    // We consider it "pending" if the slot time has passed but no prescription exists
+    const [pendingPresRow] = await db.query(
+      `SELECT COUNT(*) as total 
+       FROM appointments a 
+       JOIN doctor_slots ds ON a.slot_id = ds.id 
+       LEFT JOIN prescriptions p ON a.id = p.appointment_id 
+       WHERE a.doctor_id = ? AND a.status != 'cancelled'
+       AND (ds.date < CURRENT_DATE OR (ds.date = CURRENT_DATE AND ds.time < CURRENT_TIME))
+       AND p.id IS NULL`,
+      [doctorId]
+    );
+
+    // 4. Schedule for Next 2 Days (Today & Tomorrow)
+    const [scheduleRows] = await db.query(
+      `SELECT 
+         a.id, a.status, a.reason,
+         ds.date, ds.time,
+         u.name AS patient_name
+       FROM appointments a
+       JOIN doctor_slots ds ON a.slot_id = ds.id
+       JOIN users u ON a.patient_id = u.id
+       WHERE a.doctor_id = ?
+       AND ds.date BETWEEN CURRENT_DATE AND DATE_ADD(CURRENT_DATE, INTERVAL 1 DAY)
+       ORDER BY ds.date ASC, ds.time ASC`,
+      [doctorId]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        totalPatients: patientRows[0].total,
+        upcomingAppointments: upcomingRows[0].total,
+        pendingPrescriptions: pendingPresRow[0].total,
+        schedule: scheduleRows
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getAppointments, updateAppointmentStatus, createPrescription, createSlots, getDashboardStats };

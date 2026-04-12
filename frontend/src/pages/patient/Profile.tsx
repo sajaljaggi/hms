@@ -71,7 +71,6 @@ export default function Profile() {
             { label: 'Phone', name: 'phone', type: 'tel', placeholder: '+91 98765 43210' },
             { label: 'City', name: 'city', type: 'text', placeholder: 'Mumbai' },
             { label: 'Age', name: 'age', type: 'number', placeholder: '30' },
-            { label: 'Weight (kg)', name: 'weight', type: 'number', placeholder: '70' },
           ] as const).map(field => (
             <div key={field.name}>
               <label className="block text-sm font-medium text-gray-700 mb-1">{field.label}</label>
@@ -80,6 +79,29 @@ export default function Profile() {
                 className="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-teal-500 focus:border-teal-500" />
             </div>
           ))}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Weight Range (kg)</label>
+            <select name="weight" value={form.weight} onChange={handleChange}
+              className="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-teal-500 focus:border-teal-500 bg-white">
+              <option value="">Select Range</option>
+              <option value="Under 5 kg">Under 5 kg</option>
+              <option value="5-10 kg">5-10 kg</option>
+              <option value="10-15 kg">10-15 kg</option>
+              <option value="15-20 kg">15-20 kg</option>
+              <option value="20-30 kg">20-30 kg</option>
+              <option value="30-40 kg">30-40 kg</option>
+              <option value="40-50 kg">40-50 kg</option>
+              <option value="50-60 kg">50-60 kg</option>
+              <option value="60-70 kg">60-70 kg</option>
+              <option value="70-80 kg">70-80 kg</option>
+              <option value="80-90 kg">80-90 kg</option>
+              <option value="90-100 kg">90-100 kg</option>
+              <option value="100-110 kg">100-110 kg</option>
+              <option value="110-120 kg">110-120 kg</option>
+              <option value="120+ kg">120+ kg</option>
+            </select>
+          </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>

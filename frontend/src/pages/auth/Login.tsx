@@ -157,10 +157,26 @@ export default function Login() {
                       placeholder="Years" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Weight (kg)</label>
-                    <input type="number" value={weight} onChange={e => setWeight(e.target.value)}
-                      className="mt-1 focus:ring-teal-500 focus:border-teal-500 block w-full sm:text-sm border-gray-300 rounded-md py-2 px-3 border"
-                      placeholder="kg" />
+                    <label className="block text-sm font-medium text-gray-700">Weight Range (kg)</label>
+                    <select value={weight} onChange={e => setWeight(e.target.value)}
+                      className="mt-1 focus:ring-teal-500 focus:border-teal-500 block w-full sm:text-sm border-gray-300 rounded-md py-2 px-3 border bg-white">
+                      <option value="">Select Range</option>
+                      <option value="Under 5 kg">Under 5 kg</option>
+                      <option value="5-10 kg">5-10 kg</option>
+                      <option value="10-15 kg">10-15 kg</option>
+                      <option value="15-20 kg">15-20 kg</option>
+                      <option value="20-30 kg">20-30 kg</option>
+                      <option value="30-40 kg">30-40 kg</option>
+                      <option value="40-50 kg">40-50 kg</option>
+                      <option value="50-60 kg">50-60 kg</option>
+                      <option value="60-70 kg">60-70 kg</option>
+                      <option value="70-80 kg">70-80 kg</option>
+                      <option value="80-90 kg">80-90 kg</option>
+                      <option value="90-100 kg">90-100 kg</option>
+                      <option value="100-110 kg">100-110 kg</option>
+                      <option value="110-120 kg">110-120 kg</option>
+                      <option value="120+ kg">120+ kg</option>
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Gender</label>

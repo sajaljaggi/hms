@@ -9,6 +9,7 @@ const {
   updateAppointmentStatus,
   createPrescription,
   createSlots,
+  getDashboardStats,
 } = require('../controllers/doctorController');
 
 // Multer config: store prescription files in uploads/
@@ -30,6 +31,7 @@ const upload = multer({
 router.use(auth, requireRole('doctor'));
 
 router.get('/appointments',       getAppointments);           // GET  /api/doctor/appointments
+router.get('/dashboard',          getDashboardStats);         // GET  /api/doctor/dashboard
 router.put('/appointment-status', updateAppointmentStatus);   // PUT  /api/doctor/appointment-status
 router.post('/prescription',      upload.single('file'), createPrescription); // POST /api/doctor/prescription
 router.post('/slots',             createSlots);               // POST /api/doctor/slots
