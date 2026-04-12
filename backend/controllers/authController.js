@@ -32,11 +32,18 @@ const register = async (req, res, next) => {
     // Hash password
     const hashed = await bcrypt.hash(password, 10);
 
+    // Sanitise optional fields — empty strings from forms must become null for DECIMAL / INT / ENUM columns
+    const parsedAge    = age !== undefined && age !== null && String(age).trim() !== '' ? Number(age) : null;
+    const parsedWeight = weight !== undefined && weight !== null && String(weight).trim() !== '' ? Number(weight) : null;
+    const safeAge      = parsedAge !== null && !isNaN(parsedAge) ? parsedAge : null;
+    const safeWeight   = parsedWeight !== null && !isNaN(parsedWeight) ? parsedWeight : null;
+    const safeGender   = gender && String(gender).trim() !== '' ? gender : null;
+
     // Insert patient (only patients can self-register)
     const [result] = await db.query(
       `INSERT INTO users (name, email, password, role, phone, gender, age, weight, address, city, guardian_name)
        VALUES (?, ?, ?, 'patient', ?, ?, ?, ?, ?, ?, ?)`,
-      [name, email, hashed, phone || null, gender || null, age || null, weight || null, address || null, city || null, guardian_name || null]
+      [name, email, hashed, phone || null, safeGender, safeAge, safeWeight, address || null, city || null, guardian_name || null]
     );
 
     const user = { id: result.insertId, email, role: 'patient' };
