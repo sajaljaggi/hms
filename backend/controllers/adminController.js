@@ -26,7 +26,7 @@ const getAllUsers = async (req, res, next) => {
 const getAllDoctors = async (req, res, next) => {
   try {
     const [rows] = await db.query(
-      `SELECT d.id, u.name, u.email, d.specialization, d.fees, u.phone, u.created_at
+      `SELECT d.id, u.name, u.email, d.specialization, d.fees, d.rating, d.rating_count, u.phone, u.created_at
        FROM doctors d
        JOIN users u ON d.user_id = u.id
        ORDER BY u.name ASC`

@@ -229,14 +229,9 @@ export default function BookAppointment() {
                       )}
                     </div>
                     <div className="p-4 bg-white border-t border-gray-100">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-1">Consultation Fee</p>
-                          <span className="text-teal-700 font-extrabold text-lg">₹{d.fees}</span>
-                        </div>
-                        <span className="text-xs text-amber-500 flex items-center gap-1 font-medium bg-amber-50 px-2 py-1 rounded-md">
-                           ★ 4.8
-                        </span>
+                      <div>
+                        <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-1">Consultation Fee</p>
+                        <span className="text-teal-700 font-extrabold text-lg">₹{d.fees}</span>
                       </div>
                     </div>
                   </div>
