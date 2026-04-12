@@ -9,6 +9,7 @@ const patientRoutes     = require('./routes/patientRoutes');
 const doctorRoutes      = require('./routes/doctorRoutes');
 const appointmentRoutes = require('./routes/appointmentRoutes');
 const adminRoutes       = require('./routes/adminRoutes');
+const morgan            = require('morgan');
 
 // Error handler middleware
 const errorHandler = require('./middleware/errorHandler');
@@ -17,6 +18,7 @@ const app  = express();
 const PORT = process.env.PORT || 5000;
 
 // ── Global Middleware ────────────────────────────────────────────────────────
+app.use(morgan('dev'));
 app.use(cors({
   origin: 'http://localhost:5173', // Vite dev server
   credentials: true,

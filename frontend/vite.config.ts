@@ -8,12 +8,12 @@ export default defineConfig({
     proxy: {
       // Forward all /api/* requests to the Express backend
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:5001',
         changeOrigin: true,
       },
       // Also proxy uploaded files served by backend
       '/uploads': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:5001',
         changeOrigin: true,
       },
     },
