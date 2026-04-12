@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Clock, CheckCircle, UserCheck, AlertCircle, Heart, Activity, Brain, Bone, Stethoscope, Info } from 'lucide-react';
 import { format, addDays, parse, addMinutes } from 'date-fns';
 import { patientService } from '../../services/patientService';
+import StarRating from '../../components/StarRating';
 
 const SPECIALIZATIONS = [
   { name: 'Cardiology', icon: Heart, color: 'text-red-500', bg: 'bg-red-50', border: 'border-red-200', desc: 'Heart & Blood Vessels. Treats heart attacks, high blood pressure, and related issues.' },
@@ -11,7 +12,7 @@ const SPECIALIZATIONS = [
   { name: 'General Medicine', icon: Stethoscope, color: 'text-blue-500', bg: 'bg-blue-50', border: 'border-blue-200', desc: 'Overall health & Primary Care. Treats common fever, cold, stomach aches, etc.' },
 ];
 
-interface Doctor  { id: number; name: string; specialization: string; fees: number; }
+interface Doctor  { id: number; name: string; specialization: string; fees: number; avg_rating: number | null; rating_count: number; }
 interface Slot    { id: number; date: string; time: string; }
 
 // Utility to format "09:00:00" to "9:00 AM - 9:15 AM"
@@ -234,9 +235,12 @@ export default function BookAppointment() {
                           <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-1">Consultation Fee</p>
                           <span className="text-teal-700 font-extrabold text-lg">₹{d.fees}</span>
                         </div>
-                        <span className="text-xs text-amber-500 flex items-center gap-1 font-medium bg-amber-50 px-2 py-1 rounded-md">
-                           ★ 4.8
-                        </span>
+                        <div className="flex flex-col items-end gap-1">
+                          <StarRating value={Math.round(d.avg_rating ?? 0)} size="sm" />
+                          <span className="text-xs text-gray-400">
+                            {d.avg_rating ? `${Number(d.avg_rating).toFixed(1)} (${d.rating_count})` : 'No ratings yet'}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
