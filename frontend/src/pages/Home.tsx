@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Heart, Bone, Brain, Pill, PlusSquare, ThumbsUp, MapPin, Phone, Mail, ChevronLeft, ChevronRight } from 'lucide-react';
+import Chatbot from '../components/Chatbot';
 
 export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -210,12 +211,8 @@ export default function Home() {
         </div>
       </section>
       
-      {/* Scroll to Top / Floating Action Button */}
-      <div className="fixed bottom-6 right-6 z-50">
-         <div className="w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-xl hover:bg-blue-700 hover:scale-105 transition-transform cursor-pointer">
-           <span className="text-xl font-bold">M</span>
-         </div>
-      </div>
+      {/* Chatbot Widget */}
+      <Chatbot />
     </div>
   );
 }

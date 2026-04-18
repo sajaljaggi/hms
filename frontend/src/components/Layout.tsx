@@ -2,6 +2,7 @@
 import { Outlet, Navigate, Link, useLocation } from 'react-router-dom';
 import { LogOut, Home, Calendar, Users, FileText, User as UserIcon, Activity, Clock, FilePlus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import Chatbot from './Chatbot';
 
 const Layout = () => {
   const { user, logout, isAuthenticated } = useAuth();
@@ -118,6 +119,9 @@ const Layout = () => {
           <Outlet />
         </main>
       </div>
+
+      {/* Chatbot — visible only for patients */}
+      {user?.role === 'patient' && <Chatbot />}
     </div>
   );
 };
