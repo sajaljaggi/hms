@@ -10,7 +10,7 @@ const getAllUsers = async (req, res, next) => {
     const offset = (page - 1) * limit;
 
     const [rows] = await db.query(
-      `SELECT id, name, email, role, phone, city, created_at
+      `SELECT id, name, email, role, phone, city, age, gender, address, guardian_name, medical_history, created_at
        FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       [limit, offset]
     );
@@ -27,7 +27,7 @@ const getAllUsers = async (req, res, next) => {
 const getAllDoctors = async (req, res, next) => {
   try {
     const [rows] = await db.query(
-      `SELECT d.id, u.name, u.email, d.specialization, d.fees, d.rating, d.rating_count, u.phone, u.created_at
+      `SELECT d.id, u.id AS user_id, u.name, u.email, d.specialization, d.fees, d.rating, d.rating_count, u.phone, u.created_at
        FROM doctors d
        JOIN users u ON d.user_id = u.id
        ORDER BY u.name ASC`
@@ -200,4 +200,66 @@ const generateSlotsAdmin = async (req, res, next) => {
   }
 };
 
-module.exports = { getAllUsers, getAllDoctors, getAllAppointments, deleteUser, createDoctor, getAdminSlots, toggleSlot, blockDay, generateSlotsAdmin };
+// ─── PATCH /api/admin/users/:id ─────────────────────────────────────────────
+const updateUser = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { name, phone, city, address } = req.body;
+    await db.query(
+      'UPDATE users SET name=?, phone=?, city=?, address=? WHERE id=?',
+      [name, phone || null, city || null, address || null, id]
+    );
+    res.json({ success: true, message: 'Patient updated.' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── PATCH /api/admin/doctors/:id ──────────────────────────────────────────
+const updateDoctor = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { name, phone, specialization, fees } = req.body;
+    const [[doctor]] = await db.query('SELECT user_id FROM doctors WHERE id=?', [id]);
+    if (!doctor) return res.status(404).json({ success: false, message: 'Doctor not found.' });
+    await db.query('UPDATE users SET name=?, phone=? WHERE id=?', [name, phone || null, doctor.user_id]);
+    await db.query('UPDATE doctors SET specialization=?, fees=? WHERE id=?', [specialization, fees, id]);
+    res.json({ success: true, message: 'Doctor updated.' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── DELETE /api/admin/appointments/:id ────────────────────────────────────
+const deleteAppointment = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    const [[appt]] = await conn.query('SELECT slot_id FROM appointments WHERE id=?', [id]);
+    if (!appt) { await conn.rollback(); conn.release(); return res.status(404).json({ success: false, message: 'Appointment not found.' }); }
+    await conn.query('DELETE FROM appointments WHERE id=?', [id]);
+    await conn.query('UPDATE doctor_slots SET is_booked=0 WHERE id=?', [appt.slot_id]);
+    await conn.commit();
+    conn.release();
+    res.json({ success: true, message: 'Appointment deleted and slot freed.' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── PATCH /api/admin/appointments/:id ────────────────────────────────────
+const updateAppointment = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const allowed = ['pending', 'completed', 'cancelled'];
+    if (!allowed.includes(status)) return res.status(400).json({ success: false, message: 'Invalid status.' });
+    await db.query('UPDATE appointments SET status=? WHERE id=?', [status, id]);
+    res.json({ success: true, message: 'Appointment status updated.' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getAllUsers, getAllDoctors, getAllAppointments, deleteUser, createDoctor, getAdminSlots, toggleSlot, blockDay, generateSlotsAdmin, updateUser, updateDoctor, deleteAppointment, updateAppointment };

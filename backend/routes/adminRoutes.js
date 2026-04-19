@@ -12,6 +12,10 @@ const {
   toggleSlot,
   blockDay,
   generateSlotsAdmin,
+  updateUser,
+  updateDoctor,
+  deleteAppointment,
+  updateAppointment,
 } = require('../controllers/adminController');
 
 // All routes require: JWT + admin role
@@ -22,6 +26,10 @@ router.get('/doctors',                  getAllDoctors);       // GET    /api/adm
 router.post('/doctors',                 createDoctor);        // POST   /api/admin/doctors
 router.get('/appointments',             getAllAppointments);  // GET    /api/admin/appointments
 router.delete('/user/:id',              deleteUser);          // DELETE /api/admin/user/:id
+router.patch('/users/:id',              updateUser);          // PATCH  /api/admin/users/:id
+router.patch('/doctors/:id',            updateDoctor);        // PATCH  /api/admin/doctors/:id
+router.delete('/appointments/:id',      deleteAppointment);   // DELETE /api/admin/appointments/:id
+router.patch('/appointments/:id',       updateAppointment);   // PATCH  /api/admin/appointments/:id
 
 // Slot management
 router.get('/slots',                    getAdminSlots);       // GET    /api/admin/slots?doctorId=&date=

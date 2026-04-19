@@ -20,6 +20,9 @@ const DoctorPrescribe = React.lazy(() => import('./pages/doctor/Prescribe'));
 
 // Admin Pages
 const AdminDashboard = React.lazy(() => import('./pages/admin/Dashboard'));
+const AdminPatients = React.lazy(() => import('./pages/admin/AdminPatients'));
+const AdminAppointments = React.lazy(() => import('./pages/admin/AdminAppointments'));
+const AdminDoctors = React.lazy(() => import('./pages/admin/AdminDoctors'));
 const Home = React.lazy(() => import('./pages/Home'));
 
 const Loader = () => (
@@ -57,9 +60,9 @@ function App() {
               {/* Admin Routes */}
               <Route path="admin">
                 <Route index element={<AdminDashboard />} />
-                <Route path="staff" element={<div>Staff Management Under Construction</div>} />
-                <Route path="patients" element={<div>Patients Management Under Construction</div>} />
-                <Route path="appointments" element={<div>All Appointments Under Construction</div>} />
+                <Route path="patients" element={<AdminPatients />} />
+                <Route path="appointments" element={<AdminAppointments />} />
+                <Route path="doctors" element={<AdminDoctors />} />
               </Route>
             </Route>
 

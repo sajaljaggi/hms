@@ -31,9 +31,9 @@ const Layout = () => {
       case 'admin':
         return [
           { name: 'Dashboard', href: '/admin', icon: Home },
-          { name: 'Staff Management', href: '/admin/staff', icon: Users },
-          { name: 'Patients', href: '/admin/patients', icon: Activity },
-          { name: 'All Appointments', href: '/admin/appointments', icon: Calendar },
+          { name: 'Patients', href: '/admin/patients', icon: Users },
+          { name: 'Appointments', href: '/admin/appointments', icon: Calendar },
+          { name: 'Doctors', href: '/admin/doctors', icon: Activity },
         ];
       default:
         return [];
