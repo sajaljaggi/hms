@@ -80,7 +80,7 @@ const sendMessage = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Message is required.' });
     }
 
-    const model = genAI.getGenerativeModel({ 
+    const model = genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
       systemInstruction: SYSTEM_PROMPT,
     });

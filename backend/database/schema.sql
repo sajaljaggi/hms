@@ -135,3 +135,18 @@ FROM (
   FROM users u
   WHERE u.email IN ('sarah@hms.com','michael@hms.com','emily@hms.com','james@hms.com','robert@hms.com')
 ) tmp;
+
+-- -----------------------------------------------
+-- Table: doctor_ratings
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS doctor_ratings (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  appointment_id INT NOT NULL UNIQUE,      -- one rating per appointment
+  doctor_id      INT NOT NULL,
+  patient_id     INT NOT NULL,
+  rating         TINYINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE,
+  FOREIGN KEY (doctor_id)      REFERENCES doctors(id)      ON DELETE CASCADE,
+  FOREIGN KEY (patient_id)     REFERENCES users(id)        ON DELETE CASCADE
+);
