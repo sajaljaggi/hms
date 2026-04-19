@@ -74,11 +74,10 @@ export default function History() {
     setRatings(prev => ({
       ...prev,
       [apptId]: {
-        ...prev[apptId],
-        rated: false,
-        submitting: false,
+        rated: prev[apptId]?.rated ?? false,
+        submitting: prev[apptId]?.submitting ?? false,
         value: star,
-        submitted: 0,
+        submitted: prev[apptId]?.submitted ?? 0,
       },
     }));
   };
