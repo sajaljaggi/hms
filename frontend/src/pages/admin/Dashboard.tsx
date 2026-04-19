@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 
 interface User { id: number; name: string; email: string; role: string; phone: string; city: string; created_at: string; }
 interface Appointment { id: number; patient_name: string; doctor_name: string; specialization: string; date: string; time: string; status: string; }
-interface Doctor { id: number; name: string; specialization: string; fees: number; email: string; }
+interface Doctor { id: number; name: string; specialization: string; fees: number; email: string; rating: number; rating_count: number; }
 
 const statusColors: Record<string, string> = {
   pending:   'bg-orange-100 text-orange-700',
@@ -123,7 +123,7 @@ export default function AdminDashboard() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                {['Name','Email','Specialization','Fee'].map(h => (
+                {['Name','Email','Specialization','Fee','Rating'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -135,6 +135,15 @@ export default function AdminDashboard() {
                   <td className="px-4 py-3 text-sm text-gray-500">{d.email}</td>
                   <td className="px-4 py-3 text-sm text-gray-500">{d.specialization}</td>
                   <td className="px-4 py-3 text-sm font-semibold text-teal-700">₹{d.fees}</td>
+                  <td className="px-4 py-3">
+                    {d.rating_count > 0 ? (
+                      <span className="text-xs text-amber-500 flex items-center gap-1 font-medium bg-amber-50 px-2 py-1 rounded-md w-fit">
+                        ★ {Number(d.rating).toFixed(1)} <span className="text-gray-400">({d.rating_count})</span>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400 italic">No ratings</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

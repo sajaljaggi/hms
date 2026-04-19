@@ -71,7 +71,15 @@ export default function History() {
   }, []);
 
   const handleStarChange = (apptId: number, star: number) => {
-    setRatings(prev => ({ ...prev, [apptId]: { ...prev[apptId], value: star } }));
+    setRatings(prev => ({
+      ...prev,
+      [apptId]: {
+        rated: prev[apptId]?.rated ?? false,
+        submitting: prev[apptId]?.submitting ?? false,
+        value: star,
+        submitted: prev[apptId]?.submitted ?? 0,
+      },
+    }));
   };
 
   const handleSubmitRating = async (apptId: number) => {
@@ -84,7 +92,7 @@ export default function History() {
         ...prev,
         [apptId]: { rated: true, submitting: false, value: state.value, submitted: state.value },
       }));
-    } catch (e: any) {
+    } catch {
       setRatings(prev => ({ ...prev, [apptId]: { ...prev[apptId], submitting: false } }));
     }
   };

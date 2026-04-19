@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS doctors (
   user_id        INT NOT NULL UNIQUE,
   specialization VARCHAR(100) NOT NULL,
   fees           DECIMAL(10,2) NOT NULL DEFAULT 0,
+  rating         DECIMAL(3,2) NOT NULL DEFAULT 0,
+  rating_count   INT NOT NULL DEFAULT 0,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -84,6 +86,21 @@ CREATE TABLE IF NOT EXISTS prescriptions (
   FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE,
   FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
   FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- -----------------------------------------------
+-- Table: ratings (doctor feedback from patients)
+-- -----------------------------------------------
+CREATE TABLE IF NOT EXISTS ratings (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  appointment_id INT NOT NULL UNIQUE,
+  doctor_id      INT NOT NULL,
+  patient_id     INT NOT NULL,
+  stars          TINYINT NOT NULL CHECK (stars BETWEEN 1 AND 5),
+  created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE,
+  FOREIGN KEY (doctor_id)      REFERENCES doctors(id) ON DELETE CASCADE,
+  FOREIGN KEY (patient_id)     REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- -----------------------------------------------
