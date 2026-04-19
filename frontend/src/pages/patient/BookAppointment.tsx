@@ -236,7 +236,7 @@ export default function BookAppointment() {
                           <span className="text-teal-700 font-extrabold text-lg">₹{d.fees}</span>
                         </div>
                         <div className="flex flex-col items-end gap-1">
-                          <StarRating value={Math.round(d.avg_rating ?? 0)} size="sm" />
+                          <StarRating value={d.avg_rating ?? 0} size="sm" />
                           <span className="text-xs text-gray-400">
                             {d.avg_rating ? `${Number(d.avg_rating).toFixed(1)} (${d.rating_count})` : 'No ratings yet'}
                           </span>
