@@ -1,5 +1,6 @@
 const db      = require('../config/db');
 const bcrypt   = require('bcryptjs');
+const { generateSlotsForDoctorDate, generateSlotsForAllDoctors } = require('../utils/generateSlots');
 
 // ─── GET /api/admin/users ───────────────────────────────────────────────────
 const getAllUsers = async (req, res, next) => {
@@ -122,4 +123,81 @@ const createDoctor = async (req, res, next) => {
   }
 };
 
-module.exports = { getAllUsers, getAllDoctors, getAllAppointments, deleteUser, createDoctor };
+// ─── GET /api/admin/slots?doctorId=&date= ──────────────────────────────────
+const getAdminSlots = async (req, res, next) => {
+  try {
+    const { doctorId, date } = req.query;
+    if (!doctorId || !date) {
+      return res.status(400).json({ success: false, message: 'doctorId and date are required.' });
+    }
+    const [rows] = await db.query(
+      `SELECT id, date, time, is_booked, is_available
+       FROM doctor_slots
+       WHERE doctor_id = ? AND date = ?
+       ORDER BY time ASC`,
+      [doctorId, date]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── PATCH /api/admin/slots/:slotId/toggle ──────────────────────────────────
+const toggleSlot = async (req, res, next) => {
+  try {
+    const { slotId } = req.params;
+    const [rows] = await db.query(
+      'SELECT id, is_booked, is_available FROM doctor_slots WHERE id = ?',
+      [slotId]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Slot not found.' });
+    }
+    if (rows[0].is_booked) {
+      return res.status(400).json({ success: false, message: 'Cannot modify a booked slot.' });
+    }
+    const newAvailable = rows[0].is_available ? 0 : 1;
+    await db.query('UPDATE doctor_slots SET is_available = ? WHERE id = ?', [newAvailable, slotId]);
+    res.json({ success: true, is_available: newAvailable });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── DELETE /api/admin/slots/day ────────────────────────────────────────────
+const blockDay = async (req, res, next) => {
+  try {
+    const { doctorId, date } = req.body;
+    if (!doctorId || !date) {
+      return res.status(400).json({ success: false, message: 'doctorId and date are required.' });
+    }
+    const [result] = await db.query(
+      'DELETE FROM doctor_slots WHERE doctor_id = ? AND date = ? AND is_booked = 0',
+      [doctorId, date]
+    );
+    res.json({ success: true, deleted: result.affectedRows });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── POST /api/admin/slots/generate ─────────────────────────────────────────
+const generateSlotsAdmin = async (req, res, next) => {
+  try {
+    const { doctorId, date } = req.body;
+    if (!date) {
+      return res.status(400).json({ success: false, message: 'date is required.' });
+    }
+    if (doctorId) {
+      await generateSlotsForDoctorDate(doctorId, date);
+    } else {
+      await generateSlotsForAllDoctors(date);
+    }
+    res.json({ success: true, message: 'Slots generated successfully.' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getAllUsers, getAllDoctors, getAllAppointments, deleteUser, createDoctor, getAdminSlots, toggleSlot, blockDay, generateSlotsAdmin };

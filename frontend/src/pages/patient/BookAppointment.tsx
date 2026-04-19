@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Clock, CheckCircle, UserCheck, AlertCircle, Heart, Activity, Brain, Bone, Stethoscope, Info } from 'lucide-react';
-import { format, addDays, parse, addMinutes } from 'date-fns';
+import { format, addDays, parse, addMinutes, isToday, isBefore, set } from 'date-fns';
 import { patientService } from '../../services/patientService';
 
 const SPECIALIZATIONS = [
@@ -11,8 +11,22 @@ const SPECIALIZATIONS = [
   { name: 'General Medicine', icon: Stethoscope, color: 'text-blue-500', bg: 'bg-blue-50', border: 'border-blue-200', desc: 'Overall health & Primary Care. Treats common fever, cold, stomach aches, etc.' },
 ];
 
-interface Doctor  { id: number; name: string; specialization: string; fees: number; }
-interface Slot    { id: number; date: string; time: string; }
+interface Doctor { id: number; name: string; specialization: string; fees: number; }
+interface Slot {
+  id: number;
+  date: string;
+  time: string;
+  is_booked: number;
+  is_available: number;
+}
+
+// Returns true if slot time has already passed on today's date
+const isPast = (slotTime: string, selectedDate: Date): boolean => {
+  if (!isToday(selectedDate)) return false;
+  const [hours, minutes] = slotTime.split(':').map(Number);
+  const slotDateTime = set(new Date(), { hours, minutes, seconds: 0, milliseconds: 0 });
+  return isBefore(slotDateTime, new Date());
+};
 
 // Utility to format "09:00:00" to "9:00 AM - 9:15 AM"
 const formatSlotRange = (timeStr: string) => {
@@ -51,11 +65,11 @@ export default function BookAppointment() {
       .finally(() => setLoadingDoctors(false));
   }, [spec]);
 
-  // Fetch available slots when doctor + date both selected
+  // Fetch all slots when doctor + date both selected; always clear selected slot
   useEffect(() => {
     if (!doctor || !date) { setSlots([]); return; }
     setLoadingSlots(true);
-    setSlot(null);
+    setSlot(null); // clear on every date/doctor change
     patientService.getAvailableSlots(doctor.id, format(date, 'yyyy-MM-dd'))
       .then(res => setSlots(res.data.data))
       .catch(() => setError('Could not load slots.'))
@@ -75,7 +89,15 @@ export default function BookAppointment() {
     }
   };
 
-  const reset = () => { setBooked(false); setSpec(''); setDate(null); setSlot(null); setDoctor(null); setDoctors([]); setSlots([]); setReason(''); };
+  const reset = () => {
+    setBooked(false); setSpec(''); setDate(null); setSlot(null);
+    setDoctor(null); setDoctors([]); setSlots([]); setReason('');
+  };
+
+  // A slot is selectable only when: not past, not booked, not blocked
+  const selectableSlots = slots.filter(s =>
+    date ? (!isPast(s.time, date) && s.is_booked === 0 && s.is_available === 1) : false
+  );
 
   if (booked) return (
     <div className="flex flex-col items-center justify-center py-20 bg-white rounded-xl shadow-sm">
@@ -122,22 +144,19 @@ export default function BookAppointment() {
                   onClick={() => { if (!showingInfo) { setSpec(s.name); setDate(null); setSlot(null); setDoctor(null); setReason(''); setInfoSpec(null); } }}
                   className={`relative flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all duration-300 ${isSelected ? 'border-teal-500 bg-teal-50 shadow-md transform scale-[1.02]' : 'border-gray-100 hover:border-teal-200 hover:bg-teal-50/30 hover:shadow-sm bg-white'}`}
                 >
-                  <div 
+                  <div
                     onClick={(e) => { e.stopPropagation(); setInfoSpec(showingInfo ? null : s.name); }}
                     className="absolute top-2 right-2 p-1.5 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-full transition-colors z-10"
                     title="What is this?"
                   >
                     <Info className="w-5 h-5" />
                   </div>
-
                   {!showingInfo ? (
                     <>
                       <div className={`p-4 rounded-full mb-3 transition-transform duration-300 ${isSelected ? 'bg-teal-100 text-teal-600 scale-110' : `${s.bg} ${s.color}`}`}>
                         <Icon className="w-8 h-8" />
                       </div>
-                      <span className={`text-base font-bold text-center ${isSelected ? 'text-teal-900' : 'text-gray-800'}`}>
-                        {s.name}
-                      </span>
+                      <span className={`text-base font-bold text-center ${isSelected ? 'text-teal-900' : 'text-gray-800'}`}>{s.name}</span>
                     </>
                   ) : (
                     <div className="flex flex-col items-center text-center animate-in fade-in duration-300 h-full justify-center">
@@ -149,7 +168,7 @@ export default function BookAppointment() {
               );
             })}
           </div>
-          
+
           {spec === 'General Medicine' && (
             <div className="mt-4 p-4 bg-blue-50 border border-blue-100 rounded-lg animate-in fade-in slide-in-from-top-2 duration-300">
               <label className="block text-sm font-medium text-blue-900 mb-2">
@@ -166,7 +185,7 @@ export default function BookAppointment() {
           )}
         </div>
 
-        {/* Step 2: Date & Time */}
+        {/* Step 2: Date */}
         {spec && (
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
             <h2 className="text-lg font-semibold mb-6 text-gray-800 flex items-center">
@@ -211,9 +230,9 @@ export default function BookAppointment() {
                     className={`overflow-hidden border rounded-xl cursor-pointer transition-all duration-300 transform hover:-translate-y-1 bg-white
                       ${doctor?.id === d.id ? 'border-teal-500 shadow-xl ring-2 ring-teal-500 scale-[1.02]' : 'border-gray-200 hover:shadow-lg hover:border-teal-300'}`}>
                     <div className="w-full h-40 bg-gray-200 overflow-hidden relative group">
-                      <img 
-                        src={`https://i.pravatar.cc/300?u=${d.id}${d.name.replace(/\s+/g, '')}`} 
-                        alt={d.name} 
+                      <img
+                        src={`https://i.pravatar.cc/300?u=${d.id}${d.name.replace(/\s+/g, '')}`}
+                        alt={d.name}
                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                         onError={(e) => { e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(d.name)}&background=0f766e&color=fff&size=300`; }}
                       />
@@ -241,31 +260,72 @@ export default function BookAppointment() {
           </div>
         )}
 
-        {/* Step 4: Available Slots */}
+        {/* Step 4: Time Slots */}
         {spec && date && doctor && (
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
             <h2 className="text-lg font-semibold mb-4 text-gray-800 flex items-center">
               <span className="bg-teal-100 text-teal-700 w-6 h-6 rounded-full inline-flex items-center justify-center text-sm mr-2">4</span>
               <Clock className="w-4 h-4 mr-2 text-teal-600" /> Choose Time Slot
             </h2>
-            {loadingSlots ? <p className="text-gray-400 text-sm">Loading slots…</p>
-            : slots.length === 0 ? (
-              <p className="text-gray-500 text-sm">No available slots for this doctor on {format(date, 'MMM dd')}. Try another date.</p>
-            ) : (
-              <div className="flex flex-wrap gap-3">
-                {slots.map(s => (
-                  <button key={s.id} onClick={() => setSlot(s)}
-                    className={`py-2 pt-3 px-4 text-sm font-medium rounded-lg border transition-all duration-300
-                      ${slot?.id === s.id ? 'bg-teal-600 border-teal-600 text-white shadow-md transform scale-105' : 'bg-white border-gray-200 text-gray-700 hover:border-teal-400 hover:bg-teal-50 hover:shadow-sm'}`}>
-                    <div className="flex flex-col items-center">
-                      <span>{formatSlotRange(s.time).split(' - ')[0]}</span>
-                      <span className="text-xs opacity-70 mb-1">to</span>
-                      <span>{formatSlotRange(s.time).split(' - ')[1]}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
+
+            {/* Legend */}
+            <div className="flex flex-wrap gap-4 mb-4 text-xs text-gray-500">
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-teal-500 inline-block"></span> Available</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-red-200 inline-block"></span> Already Booked</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-gray-200 inline-block"></span> Not Available / Past</span>
+            </div>
+
+            {loadingSlots
+              ? <p className="text-gray-400 text-sm">Loading slots…</p>
+              : slots.length === 0 || selectableSlots.length === 0
+                ? <p className="text-gray-500 text-sm">No available slots for this doctor on {format(date, 'MMM dd')}. Try another date.</p>
+                : (
+                  <div className="flex flex-wrap gap-3">
+                    {slots.map(s => {
+                      const past         = isPast(s.time, date);
+                      const isSelectable = !past && s.is_booked === 0 && s.is_available === 1;
+                      const isBooked     = s.is_booked === 1;
+                      const isBlocked    = !past && s.is_booked === 0 && s.is_available === 0;
+                      const isSelected   = slot?.id === s.id;
+
+                      let cls = '';
+                      let title = '';
+
+                      // Priority: past > booked > blocked > selected > available
+                      if (past) {
+                        cls   = 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed opacity-50';
+                        title = 'Past — cannot book';
+                      } else if (isBooked) {
+                        cls   = 'bg-red-50 border-red-200 text-red-400 line-through cursor-not-allowed opacity-70';
+                        title = 'Already Booked';
+                      } else if (isBlocked) {
+                        cls   = 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed opacity-60';
+                        title = 'Not Available';
+                      } else if (isSelected) {
+                        cls   = 'bg-teal-600 border-teal-600 text-white shadow-md transform scale-105';
+                      } else {
+                        cls   = 'bg-white border-gray-200 text-gray-700 hover:border-teal-400 hover:bg-teal-50 hover:shadow-sm';
+                      }
+
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => isSelectable && setSlot(s)}
+                          disabled={!isSelectable}
+                          title={title}
+                          className={`py-2 pt-3 px-4 text-sm font-medium rounded-lg border transition-all duration-300 ${cls}`}
+                        >
+                          <div className="flex flex-col items-center">
+                            <span>{formatSlotRange(s.time).split(' - ')[0]}</span>
+                            <span className="text-xs opacity-70 mb-1">to</span>
+                            <span>{formatSlotRange(s.time).split(' - ')[1]}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )
+            }
           </div>
         )}
       </div>

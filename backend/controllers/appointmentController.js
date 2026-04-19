@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { generateSlotsForDoctorDate, generateSlotsForAllDoctors } = require('../utils/generateSlots');
 
 // ─── GET /api/doctors?specialization=xxx ───────────────────────────────────
 const getDoctors = async (req, res, next) => {
@@ -35,10 +36,14 @@ const getAvailableSlots = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'doctorId and date are required.' });
     }
 
+    // Auto-generate slots for this doctor+date if not yet created
+    await generateSlotsForDoctorDate(doctorId, date);
+
+    // Return ALL slots for the day (booked + blocked + available)
     const [rows] = await db.query(
-      `SELECT id, date, time
+      `SELECT id, date, time, is_booked, is_available
        FROM doctor_slots
-       WHERE doctor_id = ? AND date = ? AND is_booked = 0
+       WHERE doctor_id = ? AND date = ?
        ORDER BY time ASC`,
       [doctorId, date]
     );
@@ -64,7 +69,7 @@ const bookAppointment = async (req, res, next) => {
 
     // Lock the slot row to prevent race conditions (double-booking)
     const [slotRows] = await conn.query(
-      'SELECT id, is_booked FROM doctor_slots WHERE id = ? AND doctor_id = ? FOR UPDATE',
+      'SELECT id, date, time, is_booked, is_available FROM doctor_slots WHERE id = ? AND doctor_id = ? FOR UPDATE',
       [slotId, doctorId]
     );
 
@@ -76,6 +81,22 @@ const bookAppointment = async (req, res, next) => {
     if (slotRows[0].is_booked) {
       await conn.rollback();
       return res.status(409).json({ success: false, message: 'This slot is already booked. Please choose another.' });
+    }
+
+    if (!slotRows[0].is_available) {
+      await conn.rollback();
+      return res.status(400).json({ success: false, message: 'This slot has been blocked by the administrator.' });
+    }
+
+    // Reject if slot date+time is already in the past
+    const slotRow = slotRows[0];
+    const dateStr = slotRow.date instanceof Date
+      ? slotRow.date.toISOString().split('T')[0]
+      : String(slotRow.date);
+    const slotDateTime = new Date(`${dateStr}T${slotRow.time}`);
+    if (slotDateTime < new Date()) {
+      await conn.rollback();
+      return res.status(400).json({ success: false, message: 'This time slot has already passed and can no longer be booked.' });
     }
 
     // Mark slot as booked
