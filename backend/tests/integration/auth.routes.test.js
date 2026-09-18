@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../../app');
 const db = require('../../config/db');
+const redis = require('../../config/redis');
 
 // Grabs the csrf_token cookie from a response and returns both the cookie
 // header value and the header to echo back, matching what the frontend does.
@@ -18,6 +19,7 @@ describe('POST /api/auth/register and /api/auth/login', () => {
   afterAll(async () => {
     await db.query('DELETE FROM users WHERE email = ?', [email]);
     await db.end();
+    redis.disconnect();
   });
 
   test('register: creates a patient and sets auth cookies', async () => {

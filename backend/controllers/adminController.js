@@ -2,6 +2,8 @@ const db      = require('../config/db');
 const bcrypt   = require('bcryptjs');
 const { generateSlotsForDoctorDate, generateSlotsForAllDoctors } = require('../utils/generateSlots');
 const { NotFoundError, ConflictError, ValidationError } = require('../utils/errors');
+const { invalidateCache, invalidateByPattern, availabilityKey, availabilityKeyPattern } = require('../utils/cache');
+const { toDateStr } = require('../utils/dates');
 
 // ─── GET /api/admin/users ───────────────────────────────────────────────────
 const getAllUsers = async (req, res, next) => {
@@ -155,7 +157,7 @@ const toggleSlot = async (req, res, next) => {
   try {
     const { slotId } = req.params;
     const [rows] = await db.query(
-      'SELECT id, is_booked, is_available FROM doctor_slots WHERE id = ?',
+      'SELECT id, doctor_id, date, is_booked, is_available FROM doctor_slots WHERE id = ?',
       [slotId]
     );
     if (rows.length === 0) {
@@ -166,6 +168,7 @@ const toggleSlot = async (req, res, next) => {
     }
     const newAvailable = rows[0].is_available ? 0 : 1;
     await db.query('UPDATE doctor_slots SET is_available = ? WHERE id = ?', [newAvailable, slotId]);
+    await invalidateCache(availabilityKey(rows[0].doctor_id, toDateStr(rows[0].date)));
     res.json({ success: true, is_available: newAvailable });
   } catch (err) {
     next(err);
@@ -180,6 +183,7 @@ const blockDay = async (req, res, next) => {
       'DELETE FROM doctor_slots WHERE doctor_id = ? AND date = ? AND is_booked = 0',
       [doctorId, date]
     );
+    await invalidateCache(availabilityKey(doctorId, date));
     res.json({ success: true, deleted: result.affectedRows });
   } catch (err) {
     next(err);
@@ -192,8 +196,10 @@ const generateSlotsAdmin = async (req, res, next) => {
     const { doctorId, date } = req.body;
     if (doctorId) {
       await generateSlotsForDoctorDate(doctorId, date);
+      await invalidateCache(availabilityKey(doctorId, date));
     } else {
       await generateSlotsForAllDoctors(date);
+      await invalidateByPattern(availabilityKeyPattern(date));
     }
     res.json({ success: true, message: 'Slots generated successfully.' });
   } catch (err) {
@@ -250,11 +256,17 @@ const deleteAppointment = async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
-    const [[appt]] = await conn.query('SELECT slot_id FROM appointments WHERE id=?', [id]);
+    const [[appt]] = await conn.query(
+      `SELECT a.slot_id, a.doctor_id, ds.date
+       FROM appointments a JOIN doctor_slots ds ON a.slot_id = ds.id
+       WHERE a.id = ?`,
+      [id]
+    );
     if (!appt) throw new NotFoundError('Appointment not found.');
     await conn.query('DELETE FROM appointments WHERE id=?', [id]);
     await conn.query('UPDATE doctor_slots SET is_booked=0 WHERE id=?', [appt.slot_id]);
     await conn.commit();
+    await invalidateCache(availabilityKey(appt.doctor_id, toDateStr(appt.date)));
     res.json({ success: true, message: 'Appointment deleted and slot freed.' });
   } catch (err) {
     try { await conn.rollback(); } catch { /* no active transaction */ }

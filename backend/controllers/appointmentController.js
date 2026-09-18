@@ -1,6 +1,8 @@
 const db = require('../config/db');
 const { generateSlotsForDoctorDate, generateSlotsForAllDoctors } = require('../utils/generateSlots');
 const { NotFoundError, ConflictError, ValidationError } = require('../utils/errors');
+const { getCache, setCache, invalidateCache, availabilityKey } = require('../utils/cache');
+const { toDateStr } = require('../utils/dates');
 
 // ─── GET /api/doctors?specialization=xxx ───────────────────────────────────
 const getDoctors = async (req, res, next) => {
@@ -32,6 +34,12 @@ const getDoctors = async (req, res, next) => {
 const getAvailableSlots = async (req, res, next) => {
   try {
     const { doctorId, date } = req.query;
+    const cacheKey = availabilityKey(doctorId, date);
+
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return res.json({ success: true, data: cached, cached: true });
+    }
 
     // Auto-generate slots for this doctor+date if not yet created
     await generateSlotsForDoctorDate(doctorId, date);
@@ -45,7 +53,8 @@ const getAvailableSlots = async (req, res, next) => {
       [doctorId, date]
     );
 
-    res.json({ success: true, data: rows });
+    await setCache(cacheKey, rows);
+    res.json({ success: true, data: rows, cached: false });
   } catch (err) {
     next(err);
   }
@@ -80,16 +89,7 @@ const bookAppointment = async (req, res, next) => {
 
     // Reject if slot date+time is already in the past
     const slotRow = slotRows[0];
-    let dateStr;
-    if (slotRow.date instanceof Date) {
-      // Use local date components — toISOString() shifts to UTC which can change the day in IST
-      const y = slotRow.date.getFullYear();
-      const m = String(slotRow.date.getMonth() + 1).padStart(2, '0');
-      const d = String(slotRow.date.getDate()).padStart(2, '0');
-      dateStr = `${y}-${m}-${d}`;
-    } else {
-      dateStr = String(slotRow.date).split('T')[0];
-    }
+    const dateStr = toDateStr(slotRow.date);
     const slotDateTime = new Date(`${dateStr}T${slotRow.time}`);
     if (slotDateTime < new Date()) {
       throw new ValidationError('This time slot has already passed and can no longer be booked.');
@@ -106,6 +106,10 @@ const bookAppointment = async (req, res, next) => {
     );
 
     await conn.commit();
+
+    // The cached availability list for this doctor+date is now stale —
+    // this slot just flipped from available to booked.
+    await invalidateCache(availabilityKey(doctorId, dateStr));
 
     res.status(201).json({
       success: true,

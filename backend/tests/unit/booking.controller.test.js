@@ -3,6 +3,16 @@ jest.mock('../../config/db', () => ({
   query: jest.fn(),
 }));
 
+// The controller also touches the availability cache — keep this a pure
+// unit test of the booking logic by stubbing it out rather than letting it
+// try to reach a real Redis instance.
+jest.mock('../../utils/cache', () => ({
+  getCache: jest.fn().mockResolvedValue(null),
+  setCache: jest.fn().mockResolvedValue(undefined),
+  invalidateCache: jest.fn().mockResolvedValue(undefined),
+  availabilityKey: (doctorId, date) => `availability:${doctorId}:${date}`,
+}));
+
 const db = require('../../config/db');
 const { bookAppointment } = require('../../controllers/appointmentController');
 const { NotFoundError, ConflictError, ValidationError } = require('../../utils/errors');

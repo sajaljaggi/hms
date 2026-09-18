@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const path = require('path');
 const { NotFoundError, ForbiddenError } = require('../utils/errors');
+const { invalidateCache, availabilityKey } = require('../utils/cache');
 
 // Helper: get doctor row from logged-in user
 const getDoctorId = async (userId) => {
@@ -119,6 +120,9 @@ const createSlots = async (req, res, next) => {
       'INSERT IGNORE INTO doctor_slots (doctor_id, date, time) VALUES ?',
       [values]
     );
+
+    const uniqueDates = [...new Set(slots.map((s) => s.date))];
+    await Promise.all(uniqueDates.map((date) => invalidateCache(availabilityKey(doctorId, date))));
 
     res.status(201).json({ success: true, message: `${slots.length} slot(s) created.` });
   } catch (err) {

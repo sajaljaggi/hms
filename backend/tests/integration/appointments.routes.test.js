@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../../app');
 const db = require('../../config/db');
+const redis = require('../../config/redis');
 
 function csrfFrom(res) {
   const setCookie = res.headers['set-cookie'] || [];
@@ -67,7 +68,6 @@ describe('POST /api/appointments/book', () => {
       await db.query('DELETE FROM doctors WHERE id = ?', [doctorId]);
     }
     await db.query('DELETE FROM users WHERE email = ?', [patient.email]);
-    await db.end();
   });
 
   test('successful booking, then double-booking the same slot is rejected with 409', async () => {
@@ -156,4 +156,65 @@ describe('POST /api/appointments/book', () => {
     expect(res.status).toBe(403);
     await db.query('DELETE FROM users WHERE id = ?', [userResult.insertId]);
   });
+});
+
+describe('GET /api/slots caching (Redis cache-aside)', () => {
+  let patient;
+  let doctorId;
+
+  beforeAll(async () => {
+    patient = await registerAndLoginPatient();
+  });
+
+  afterAll(async () => {
+    if (doctorId) {
+      await db.query('DELETE FROM doctors WHERE id = ?', [doctorId]);
+    }
+    await db.query('DELETE FROM users WHERE email = ?', [patient.email]);
+  });
+
+  test('first request is a cache miss, second is a cache hit, booking invalidates it', async () => {
+    const date = tomorrowStr();
+    const seeded = await seedDoctorWithSlots(date);
+    doctorId = seeded.doctorId;
+
+    const first = await request(app)
+      .get(`/api/slots?doctorId=${doctorId}&date=${date}`)
+      .set('Cookie', patient.cookies);
+    expect(first.status).toBe(200);
+    expect(first.body.cached).toBe(false);
+
+    const second = await request(app)
+      .get(`/api/slots?doctorId=${doctorId}&date=${date}`)
+      .set('Cookie', patient.cookies);
+    expect(second.status).toBe(200);
+    expect(second.body.cached).toBe(true);
+    // Cached payload must match what was actually computed, not just "truthy".
+    expect(second.body.data).toEqual(first.body.data);
+
+    const booking = await request(app)
+      .post('/api/appointments/book')
+      .set('Cookie', patient.cookies)
+      .set('X-CSRF-Token', patient.csrfToken)
+      .send({ doctorId, slotId: seeded.slotAId });
+    expect(booking.status).toBe(201);
+
+    // The cache entry should have been invalidated by the booking, so this
+    // is a fresh miss that reflects the now-booked slot.
+    const third = await request(app)
+      .get(`/api/slots?doctorId=${doctorId}&date=${date}`)
+      .set('Cookie', patient.cookies);
+    expect(third.status).toBe(200);
+    expect(third.body.cached).toBe(false);
+    const bookedSlot = third.body.data.find((s) => s.id === seeded.slotAId);
+    expect(bookedSlot.is_booked).toBe(1);
+  });
+});
+
+// Runs once after every describe block above has finished, not per-block —
+// closing these shared connections mid-file would break whichever describe
+// block runs next.
+afterAll(async () => {
+  await db.end();
+  redis.disconnect();
 });
