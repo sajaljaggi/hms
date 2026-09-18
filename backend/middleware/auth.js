@@ -20,7 +20,7 @@ const auth = (req, res, next) => {
     }
     req.user = decoded; // { id, email, role, type }
     next();
-  } catch (err) {
+  } catch {
     return next(new AuthError('Invalid or expired token.'));
   }
 };

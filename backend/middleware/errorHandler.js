@@ -38,7 +38,9 @@ function normalize(err) {
  * Global error handling middleware.
  * Must be registered last in Express app (after all routes).
  */
-const errorHandler = (err, req, res, next) => {
+// Express only recognizes this as error-handling middleware because it
+// declares all 4 params — `next` must stay even though it's never called.
+const errorHandler = (err, req, res, _next) => {
   const { statusCode, code, message, details } = normalize(err);
 
   console.error(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} -> ${statusCode} ${code}:`, err.stack || err.message);

@@ -75,7 +75,7 @@ HOSPITAL INFO:
 - Appointments can be booked up to 14 days in advance`;
 
 // ── POST /api/chatbot/message ────────────────────────────────────────────────
-const sendMessage = async (req, res, next) => {
+const sendMessage = async (req, res) => {
   try {
     const { message, history } = req.body;
 
@@ -109,7 +109,7 @@ const sendMessage = async (req, res, next) => {
       try {
         action = JSON.parse(actionMatch[1]);
         cleanText = responseText.replace(/>>>ACTION:\{.*\}/, '').trim();
-      } catch (e) {
+      } catch {
         // If JSON parse fails, just return the text as-is
         cleanText = responseText.replace(/>>>ACTION:.*/, '').trim();
       }

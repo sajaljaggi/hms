@@ -10,7 +10,9 @@
     "test:unit": "jest tests/unit --runInBand",
     "test:integration": "node database/setupTestDb.js && jest tests/integration --runInBand",
     "test:all": "npm run test:unit && npm run test:integration",
-    "test:coverage": "jest tests/unit --coverage --runInBand"
+    "test:coverage": "jest tests/unit --coverage --runInBand",
+    "db:migrate": "node database/migrate.js",
+    "lint": "eslint ."
   },
   "keywords": [],
   "author": "",
@@ -34,6 +36,9 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.10.0",
+    "globals": "^17.12.0",
     "jest": "^30.5.1",
     "supertest": "^7.2.2"
   }

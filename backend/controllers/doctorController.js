@@ -1,5 +1,4 @@
 const db = require('../config/db');
-const path = require('path');
 const { NotFoundError, ForbiddenError } = require('../utils/errors');
 const { invalidateCache, availabilityKey } = require('../utils/cache');
 

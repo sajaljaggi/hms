@@ -1,5 +1,5 @@
 const db = require('../config/db');
-const { generateSlotsForDoctorDate, generateSlotsForAllDoctors } = require('../utils/generateSlots');
+const { generateSlotsForDoctorDate } = require('../utils/generateSlots');
 const { NotFoundError, ConflictError, ValidationError } = require('../utils/errors');
 const { getCache, setCache, invalidateCache, availabilityKey } = require('../utils/cache');
 const { toDateStr } = require('../utils/dates');
