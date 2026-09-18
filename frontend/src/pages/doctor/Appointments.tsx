@@ -58,7 +58,7 @@ export default function DoctorAppointments() {
           <input placeholder="Search patient…" value={patientFilter} onChange={e => setPatientFilter(e.target.value)}
             className="pl-9 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-teal-500 focus:border-teal-500" />
         </div>
-        <button onClick={fetchData} className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 transition">
+        <button onClick={() => fetchData()} className="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 transition">
           Filter
         </button>
       </div>
