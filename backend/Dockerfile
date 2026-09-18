@@ -12,6 +12,8 @@ COPY . .
 # volume over this in docker-compose.yml so they survive container restarts.
 RUN mkdir -p uploads/doctors
 
+RUN chmod +x start.sh
+
 EXPOSE 5000
 
-CMD ["node", "server.js"]
+CMD ["./start.sh"]

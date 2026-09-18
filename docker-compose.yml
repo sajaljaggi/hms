@@ -60,9 +60,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    # Applies schema.sql + migrations (idempotent) before starting the API,
-    # so a fresh `docker-compose up` gets a working schema automatically.
-    command: sh -c "node database/migrate.js && node server.js"
+    # No command override needed — backend/Dockerfile's CMD (start.sh) already
+    # applies schema.sql + migrations before starting the API.
     volumes:
       - backend_uploads:/app/uploads
     ports:
