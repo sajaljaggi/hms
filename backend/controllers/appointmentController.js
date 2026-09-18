@@ -90,9 +90,16 @@ const bookAppointment = async (req, res, next) => {
 
     // Reject if slot date+time is already in the past
     const slotRow = slotRows[0];
-    const dateStr = slotRow.date instanceof Date
-      ? slotRow.date.toISOString().split('T')[0]
-      : String(slotRow.date);
+    let dateStr;
+    if (slotRow.date instanceof Date) {
+      // Use local date components — toISOString() shifts to UTC which can change the day in IST
+      const y = slotRow.date.getFullYear();
+      const m = String(slotRow.date.getMonth() + 1).padStart(2, '0');
+      const d = String(slotRow.date.getDate()).padStart(2, '0');
+      dateStr = `${y}-${m}-${d}`;
+    } else {
+      dateStr = String(slotRow.date).split('T')[0];
+    }
     const slotDateTime = new Date(`${dateStr}T${slotRow.time}`);
     if (slotDateTime < new Date()) {
       await conn.rollback();
