@@ -59,7 +59,12 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch {
         localStorage.removeItem('hms_user');
-        window.location.href = '/login';
+        // Redirecting when already on /login just reloads the page, which
+        // remounts the app, which retries this exact flow again — an
+        // infinite reload loop for any logged-out visitor on that page.
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
         return Promise.reject(error);
       }
     }
