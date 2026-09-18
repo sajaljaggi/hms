@@ -14,7 +14,8 @@ import {
 } from 'lucide-react';
 import { format, addDays, parse, addMinutes } from 'date-fns';
 import { chatbotService, type ChatDoctor, type ChatSlot, type ChatAppointment } from '../services/chatbotService';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
+import { getErrorMessage } from '../utils/getErrorMessage';
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 interface Message {
@@ -297,9 +298,8 @@ export default function Chatbot() {
         { bookingConfirmed: true }
       );
       resetBooking();
-    } catch (err: any) {
-      const errMsg = err?.response?.data?.message || 'Booking failed. Please try again.';
-      addBotMessage(`❌ ${errMsg}`);
+    } catch (err) {
+      addBotMessage(`❌ ${getErrorMessage(err, 'Booking failed. Please try again.')}`);
     } finally {
       setIsBooking(false);
     }

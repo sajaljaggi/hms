@@ -113,7 +113,7 @@ export default function AdminPatients() {
         <div className="px-4 py-2 border-b border-gray-100">
           <select
             value={sortBy}
-            onChange={e => setSortBy(e.target.value as any)}
+            onChange={e => setSortBy(e.target.value as 'name-asc' | 'name-desc' | 'date-new' | 'date-old')}
             className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-400"
           >
             <option value="name-asc">Name A → Z</option>

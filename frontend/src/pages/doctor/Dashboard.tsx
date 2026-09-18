@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Calendar, Users, Activity, Clock } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import { doctorService } from '../../services/doctorService';
 import { format, isToday, isTomorrow, parse } from 'date-fns';
 

@@ -1,7 +1,7 @@
 
 import { Outlet, Navigate, Link, useLocation } from 'react-router-dom';
 import { LogOut, Home, Calendar, Users, FileText, User as UserIcon, Activity, Clock, FilePlus } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import Chatbot from './Chatbot';
 
 const Layout = () => {

@@ -15,7 +15,7 @@ export default function AdminDashboard() {
       adminService.getDoctors(),
       adminService.getAppointments(),
     ]).then(([u, d, a]) => {
-      setPatientCount(u.data.data.filter((x: any) => x.role === 'patient').length);
+      setPatientCount(u.data.data.filter((x: { role: string }) => x.role === 'patient').length);
       setDoctorCount(d.data.data.length);
       setAppointmentCount(a.data.data.length);
     }).catch(() => setError('Failed to load admin data.'))

@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { Calendar, Clock, Download, AlertCircle, Search, Filter, X, Star } from 'lucide-react';
 import { patientService } from '../../services/patientService';
 import { format, parse, addMinutes } from 'date-fns';
+import { getErrorMessage } from '../../utils/getErrorMessage';
 
 interface Appointment {
   id: number; status: string; date: string; time: string;
@@ -45,8 +46,8 @@ function StarRating({ appointmentId, existingRating, onRated }: {
       setSelected(stars);
       setSubmitted(true);
       onRated(appointmentId, stars);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Failed to submit rating.');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to submit rating.'));
     } finally {
       setSubmitting(false);
     }

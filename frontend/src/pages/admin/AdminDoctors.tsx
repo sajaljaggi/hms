@@ -3,6 +3,7 @@ import { Search, AlertCircle, Trash2, Edit3, X, Check, Stethoscope, Plus, ArrowL
 import { adminService } from '../../services/adminService';
 import { format } from 'date-fns';
 import SlotManagement from './SlotManagement';
+import { getErrorMessage } from '../../utils/getErrorMessage';
 
 const API_BASE = 'http://localhost:5001';
 
@@ -100,7 +101,6 @@ export default function AdminDoctors() {
       fd.append('fees', editForm.fees);
       if (editImageFile) fd.append('profileImage', editImageFile);
       await adminService.updateDoctor(selected.id, fd);
-      const newImage = editImageFile ? URL.createObjectURL(editImageFile) : undefined;
       setDoctors(prev => prev.map(d => d.id === selected.id
         ? { ...d, name: editForm.name, phone: editForm.phone, specialization: editForm.specialization, fees: Number(editForm.fees) }
         : d
@@ -142,8 +142,8 @@ export default function AdminDoctors() {
       flash('Doctor added successfully!');
       fetchDoctors();
       setView('list');
-    } catch (err: any) {
-      setAddError(err?.response?.data?.message || 'Failed to add doctor.');
+    } catch (err) {
+      setAddError(getErrorMessage(err, 'Failed to add doctor.'));
     } finally {
       setAdding(false);
     }

@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Clock, RefreshCw, Ban, Zap, Stethoscope, UserCheck, CalendarDays, ChevronRight, Check } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { format, addDays } from 'date-fns';
+import { getErrorMessage } from '../../utils/getErrorMessage';
 
 interface Doctor { id: number; name: string; specialization: string; fees: number; email: string; rating: number; rating_count: number; }
 interface Slot { id: number; date: string; time: string; is_booked: number; is_available: number; }
@@ -69,8 +70,8 @@ export default function SlotManagement({ doctors }: { doctors: Doctor[] }) {
       const newAvail = res.data.is_available;
       setSlots(prev => prev.map(s => s.id === slotId ? { ...s, is_available: newAvail } : s));
       flash(newAvail ? 'Slot unblocked.' : 'Slot blocked.');
-    } catch (err: any) {
-      flash(err?.response?.data?.message || 'Could not toggle slot.', true);
+    } catch (err) {
+      flash(getErrorMessage(err, 'Could not toggle slot.'), true);
     } finally {
       setTogglingId(null);
     }
@@ -83,8 +84,8 @@ export default function SlotManagement({ doctors }: { doctors: Doctor[] }) {
       const res = await adminService.blockDay(Number(selectedDoctor), selectedDate);
       flash(`Deleted ${res.data.deleted} slot(s). Reload to refresh grid.`);
       setSlots([]);
-    } catch (err: any) {
-      flash(err?.response?.data?.message || 'Failed to block day.', true);
+    } catch (err) {
+      flash(getErrorMessage(err, 'Failed to block day.'), true);
     }
   };
 

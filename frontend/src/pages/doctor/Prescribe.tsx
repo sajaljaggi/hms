@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FileText, Upload, CheckCircle, AlertCircle } from 'lucide-react';
 import { doctorService } from '../../services/doctorService';
+import { getErrorMessage } from '../../utils/getErrorMessage';
 
 interface Appointment { id: number; patient_name: string; patient_id: number; date: string; time: string; status: string; }
 
@@ -25,7 +26,7 @@ export default function Prescribe() {
     const id = e.target.value;
     setApptId(id);
     const appt = appointments.find(a => a.id === parseInt(id));
-    setPatientId(appt ? String((appt as any).patient_id) : '');
+    setPatientId(appt ? String(appt.patient_id) : '');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -41,8 +42,8 @@ export default function Prescribe() {
       await doctorService.createPrescription(formData);
       setSuccess(true);
       setNotes(''); setFile(null); setApptId(''); setPatientId('');
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Failed to save prescription.');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to save prescription.'));
     } finally {
       setSaving(false);
     }

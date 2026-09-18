@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Clock, CheckCircle, UserCheck, AlertCircle, Heart, Activity, Brain, Bone, Stethoscope, Info } from 'lucide-react';
 import { format, addDays, parse, addMinutes, isToday, isBefore, set } from 'date-fns';
 import { patientService } from '../../services/patientService';
+import { getErrorMessage } from '../../utils/getErrorMessage';
 
 const SPECIALIZATIONS = [
   { name: 'Cardiology', icon: Heart, color: 'text-red-500', bg: 'bg-red-50', border: 'border-red-200', desc: 'Heart & Blood Vessels. Treats heart attacks, high blood pressure, and related issues.' },
@@ -82,8 +83,8 @@ export default function BookAppointment() {
     try {
       await patientService.bookAppointment(doctor.id, slot.id, reason);
       setBooked(true);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Booking failed. Please try again.');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Booking failed. Please try again.'));
     } finally {
       setBooking(false);
     }

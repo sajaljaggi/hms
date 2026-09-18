@@ -74,7 +74,7 @@ export default function Profile() {
           ] as const).map(field => (
             <div key={field.name}>
               <label className="block text-sm font-medium text-gray-700 mb-1">{field.label}</label>
-              <input name={field.name} type={field.type} value={(form as any)[field.name]}
+              <input name={field.name} type={field.type} value={form[field.name]}
                 onChange={handleChange} placeholder={field.placeholder}
                 className="block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-teal-500 focus:border-teal-500" />
             </div>

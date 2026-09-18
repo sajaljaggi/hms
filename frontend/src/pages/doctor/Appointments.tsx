@@ -21,15 +21,20 @@ export default function DoctorAppointments() {
   const [patientFilter, setPatientFilter] = useState('');
   const [error, setError] = useState('');
 
-  const fetchData = () => {
-    setLoading(true);
+  const fetchData = (showLoading = true) => {
+    if (showLoading) setLoading(true);
     doctorService.getAppointments({ date: dateFilter || undefined, patient: patientFilter || undefined })
       .then(res => setAppointments(res.data.data))
       .catch(() => setError('Failed to load appointments.'))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchData(); }, []);
+  // loading already starts true; this mirrors the identical
+  // fetchDoctors(isInitial) pattern in AdminDoctors.tsx, which this rule
+  // does not flag on the same shape — flags here regardless of the guard's
+  // literal argument value.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { fetchData(false); }, []);
 
   const updateStatus = async (id: number, status: string) => {
     try {

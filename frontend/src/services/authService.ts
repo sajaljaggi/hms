@@ -5,6 +5,9 @@ export interface RegisterData {
   name: string; email: string; password: string;
   phone?: string; gender?: string; age?: number;
   weight?: number; address?: string; city?: string;
+  guardian_name?: string;
+  // Accepted but ignored server-side — registration always creates a patient.
+  role?: string;
 }
 
 export const authService = {

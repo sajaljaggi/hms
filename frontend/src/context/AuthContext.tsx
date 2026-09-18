@@ -1,30 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { authService } from '../services/authService';
-
-export type Role = 'patient' | 'doctor' | 'admin' | null;
-
-export interface User {
-  id: number;
-  name: string;
-  email: string;
-  role: Role;
-  specialization?: string;
-}
-
-interface AuthContextType {
-  user: User | null;
-  role: Role;
-  login:    (email: string, password: string) => Promise<void>;
-  register: (data: object) => Promise<void>;
-  logout:   () => Promise<void>;
-  isAuthenticated: boolean;
-  // True until the initial /auth/me session check resolves. The auth token
-  // lives in an httpOnly cookie now, so the frontend can't just read it —
-  // it has to ask the server whether the session is still valid.
-  isLoading: boolean;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+import type { RegisterData } from '../services/authService';
+import { AuthContext, type User } from './useAuth';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Optimistic initial render from the last-known user (display only, not a
@@ -61,7 +38,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const register = async (formData: object) => {
-    const { data } = await authService.register(formData as any);
+    const { data } = await authService.register(formData as RegisterData);
     if (!data.success) throw new Error(data.message);
     localStorage.setItem('hms_user', JSON.stringify(data.user));
     setUser(data.user);
@@ -84,10 +61,4 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useAuth = () => {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
-  return ctx;
 };

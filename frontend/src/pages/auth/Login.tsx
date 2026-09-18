@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import type { Role } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
+import type { Role } from '../../context/useAuth';
 import { Activity, Lock, Mail, Users, AlertCircle } from 'lucide-react';
+import { getErrorMessage } from '../../utils/getErrorMessage';
 
 export default function Login() {
   const location   = useLocation();
@@ -43,8 +44,8 @@ export default function Login() {
       } else {
         navigate(`/${role}`);
       }
-    } catch (err: any) {
-      setError(err?.response?.data?.message || err?.message || 'Something went wrong.');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Something went wrong.'));
     } finally {
       setLoading(false);
     }
