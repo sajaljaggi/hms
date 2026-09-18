@@ -1,6 +1,7 @@
 require('dotenv').config();
-const express = require('express');
-const cors    = require('cors');
+const express      = require('express');
+const cors         = require('cors');
+const cookieParser = require('cookie-parser');
 const path    = require('path');
 const cron    = require('node-cron');
 const { addDays, format } = require('date-fns');
@@ -17,6 +18,7 @@ const morgan            = require('morgan');
 // Error handler middleware
 const errorHandler = require('./middleware/errorHandler');
 const { NotFoundError } = require('./utils/errors');
+const { issueCsrfToken, verifyCsrf } = require('./middleware/csrf');
 
 // DB + slot generator
 const db = require('./config/db');
@@ -28,11 +30,17 @@ const PORT = process.env.PORT || 5000;
 // ── Global Middleware ────────────────────────────────────────────────────────
 app.use(morgan('dev'));
 app.use(cors({
-  origin: 'http://localhost:5173', // Vite dev server
-  credentials: true,
+  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  credentials: true, // required for the browser to send/receive the auth cookies
 }));
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// CSRF: issue the readable csrf_token cookie on every request, then require
+// it to be echoed back in a header on any state-changing one.
+app.use(issueCsrfToken);
+app.use(verifyCsrf);
 
 // Serve uploaded files (prescriptions) as static assets
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

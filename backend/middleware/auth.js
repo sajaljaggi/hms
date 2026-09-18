@@ -1,22 +1,24 @@
 const jwt = require('jsonwebtoken');
 const { AuthError } = require('../utils/errors');
+const { ACCESS_COOKIE } = require('../utils/cookies');
 
 /**
- * Middleware: Verify JWT token from Authorization header.
- * Attaches decoded payload to req.user on success.
+ * Middleware: Verify the JWT access token from the httpOnly access_token
+ * cookie. Attaches the decoded payload to req.user on success.
  */
 const auth = (req, res, next) => {
-  const authHeader = req.headers.authorization;
+  const token = req.cookies?.[ACCESS_COOKIE];
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!token) {
     return next(new AuthError('No token provided. Access denied.'));
   }
 
-  const token = authHeader.split(' ')[1];
-
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded; // { id, email, role }
+    if (decoded.type !== 'access') {
+      return next(new AuthError('Invalid token type.'));
+    }
+    req.user = decoded; // { id, email, role, type }
     next();
   } catch (err) {
     return next(new AuthError('Invalid or expired token.'));

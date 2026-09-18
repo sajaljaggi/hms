@@ -8,6 +8,8 @@ export interface RegisterData {
 }
 
 export const authService = {
-  login: (data: LoginData) => api.post('/auth/login', data),
+  login:    (data: LoginData)    => api.post('/auth/login', data),
   register: (data: RegisterData) => api.post('/auth/register', data),
+  logout:   ()                   => api.post('/auth/logout'),
+  me:       ()                   => api.get('/auth/me'),
 };

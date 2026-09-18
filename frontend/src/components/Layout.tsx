@@ -5,8 +5,18 @@ import { useAuth } from '../context/AuthContext';
 import Chatbot from './Chatbot';
 
 const Layout = () => {
-  const { user, logout, isAuthenticated } = useAuth();
+  const { user, logout, isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
+
+  // Wait for the /auth/me session check before deciding to bounce — the
+  // cookie-based session can only be confirmed by asking the server.
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-teal-600" />
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/" state={{ from: location }} replace />;
@@ -103,8 +113,8 @@ const Layout = () => {
           <div className="flex-1" />
           <div className="flex items-center ml-4">
             <button
-              onClick={() => {
-                logout();
+              onClick={async () => {
+                await logout();
                 window.location.href = '/';
               }}
               className="flex items-center text-sm font-medium text-gray-700 hover:text-red-600 transition-colors"
