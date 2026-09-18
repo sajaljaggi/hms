@@ -57,7 +57,6 @@ function tomorrowStr() {
 describe('POST /api/appointments/book', () => {
   let patient;
   let doctorId;
-  let createdUserIds = [];
 
   beforeAll(async () => {
     patient = await registerAndLoginPatient();

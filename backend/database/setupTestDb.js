@@ -6,29 +6,11 @@
  *
  * Usage: node database/setupTestDb.js   (reads backend/.env.test)
  */
-const fs = require('fs');
 const path = require('path');
 const mysql = require('mysql2/promise');
+const { applySchema, SQL_FILES } = require('./applySchema');
 
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env.test') });
-
-// Applied in order: base schema, then incremental migrations layered on top.
-const SQL_FILES = [
-  'schema.sql',
-  'migration_ratings.sql',
-  'migration_slots.sql',
-  'migration_doctor_image.sql',
-];
-
-function stripDatabaseStatements(sql) {
-  // The connection is already scoped to DB_NAME via `database:` in the
-  // connection config, so any `CREATE DATABASE hms_db` / `USE hms_db` in
-  // these files (written for the real dev DB) must not run here.
-  return sql
-    .split('\n')
-    .filter((line) => !/^\s*CREATE DATABASE/i.test(line) && !/^\s*USE\s/i.test(line))
-    .join('\n');
-}
 
 async function setupTestDb() {
   const { DB_HOST, DB_USER, DB_PASSWORD, DB_NAME } = process.env;
@@ -53,12 +35,9 @@ async function setupTestDb() {
     multipleStatements: true,
   });
 
-  for (const file of SQL_FILES) {
-    const raw = fs.readFileSync(path.join(__dirname, file), 'utf8');
-    await conn.query(stripDatabaseStatements(raw));
-  }
-
+  await applySchema(conn);
   await conn.end();
+
   console.log(`✅ Test database "${DB_NAME}" set up from ${SQL_FILES.join(', ')}.`);
 }
 
