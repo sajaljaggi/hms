@@ -7,9 +7,15 @@ const { idParam } = require('./common');
 const textField = z.string().trim().optional();
 
 // Numeric fields: '' means "no value" -> NULL (COALESCE keeps prior value),
-// since an empty string isn't a valid DECIMAL/INT bind param.
+// since an empty string isn't a valid DECIMAL/INT bind param. weight is
+// actually a range <select> ("15-20 kg"), which never parses as a clean
+// number either — treat that the same as "no value" rather than rejecting
+// the whole profile update.
 const numericOrEmpty = (schema) =>
-  z.preprocess((val) => (val === '' ? null : val), schema.nullable().optional());
+  z.preprocess((val) => {
+    if (val === '' || val === null) return null;
+    return Number.isNaN(Number(val)) ? null : val;
+  }, schema.nullable().optional());
 
 const updateProfileSchema = z.object({
   name:            textField,

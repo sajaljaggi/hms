@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { emptyToUndefined } = require('./common');
+const { emptyToUndefined, looseNumber } = require('./common');
 
 const registerSchema = z.object({
   name:     z.string().trim().min(1, 'Name is required.'),
@@ -8,7 +8,9 @@ const registerSchema = z.object({
   phone:         emptyToUndefined(z.string().trim().optional()),
   gender:        emptyToUndefined(z.enum(['male', 'female', 'other']).optional()),
   age:           emptyToUndefined(z.coerce.number().int().min(0).max(150).optional()),
-  weight:        emptyToUndefined(z.coerce.number().positive().optional()),
+  // The frontend's weight field is a range <select> ("15-20 kg"), not a
+  // number input — looseNumber drops it silently instead of rejecting it.
+  weight:        looseNumber(emptyToUndefined(z.coerce.number().positive().optional())),
   address:       emptyToUndefined(z.string().trim().optional()),
   city:          emptyToUndefined(z.string().trim().optional()),
   guardian_name: emptyToUndefined(z.string().trim().optional()),
