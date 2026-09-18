@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { NotFoundError, ValidationError, ConflictError } = require('../utils/errors');
 
 // ─── GET /api/patient/profile ───────────────────────────────────────────────
 const getProfile = async (req, res, next) => {
@@ -7,7 +8,7 @@ const getProfile = async (req, res, next) => {
       'SELECT id, name, email, gender, age, weight, phone, address, city, medical_history, role, created_at, guardian_name FROM users WHERE id = ?',
       [req.user.id]
     );
-    if (rows.length === 0) return res.status(404).json({ success: false, message: 'User not found.' });
+    if (rows.length === 0) throw new NotFoundError('User not found.');
     res.json({ success: true, data: rows[0] });
   } catch (err) {
     next(err);
@@ -75,11 +76,6 @@ const submitRating = async (req, res, next) => {
     const { appointmentId, stars } = req.body;
     const patientId = req.user.id;
 
-    // Validate input
-    if (!appointmentId || !stars || stars < 1 || stars > 5) {
-      return res.status(400).json({ success: false, message: 'appointmentId and stars (1-5) are required.' });
-    }
-
     // Verify appointment belongs to this patient and is completed
     const [apptRows] = await conn.query(
       'SELECT id, doctor_id, status FROM appointments WHERE id = ? AND patient_id = ?',
@@ -87,11 +83,11 @@ const submitRating = async (req, res, next) => {
     );
 
     if (apptRows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Appointment not found.' });
+      throw new NotFoundError('Appointment not found.');
     }
 
     if (apptRows[0].status !== 'completed') {
-      return res.status(400).json({ success: false, message: 'You can only rate completed appointments.' });
+      throw new ValidationError('You can only rate completed appointments.');
     }
 
     const doctorId = apptRows[0].doctor_id;
@@ -103,7 +99,7 @@ const submitRating = async (req, res, next) => {
     );
 
     if (existingRating.length > 0) {
-      return res.status(409).json({ success: false, message: 'You have already rated this appointment.' });
+      throw new ConflictError('You have already rated this appointment.');
     }
 
     await conn.beginTransaction();
@@ -133,7 +129,10 @@ const submitRating = async (req, res, next) => {
       data: { stars, avgRating: parseFloat(avgResult.avg_rating).toFixed(1) },
     });
   } catch (err) {
-    await conn.rollback();
+    // rollback() is a no-op error-wise if beginTransaction() was never reached
+    // (e.g. one of the validation checks above threw first) — guard it so the
+    // original error is always what reaches the client, not a rollback failure.
+    try { await conn.rollback(); } catch { /* no active transaction */ }
     next(err);
   } finally {
     conn.release();

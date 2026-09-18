@@ -1,10 +1,11 @@
 const db = require('../config/db');
 const path = require('path');
+const { NotFoundError, ForbiddenError } = require('../utils/errors');
 
 // Helper: get doctor row from logged-in user
 const getDoctorId = async (userId) => {
   const [rows] = await db.query('SELECT id FROM doctors WHERE user_id = ?', [userId]);
-  if (rows.length === 0) throw Object.assign(new Error('Doctor profile not found.'), { statusCode: 404 });
+  if (rows.length === 0) throw new NotFoundError('Doctor profile not found.');
   return rows[0].id;
 };
 
@@ -54,18 +55,13 @@ const updateAppointmentStatus = async (req, res, next) => {
     const doctorId = await getDoctorId(req.user.id);
     const { appointmentId, status } = req.body;
 
-    const allowed = ['pending', 'completed', 'cancelled'];
-    if (!allowed.includes(status)) {
-      return res.status(400).json({ success: false, message: `Status must be one of: ${allowed.join(', ')}.` });
-    }
-
     const [result] = await db.query(
       'UPDATE appointments SET status = ? WHERE id = ? AND doctor_id = ?',
       [status, appointmentId, doctorId]
     );
 
     if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: 'Appointment not found or not yours.' });
+      throw new NotFoundError('Appointment not found or not yours.');
     }
 
     res.json({ success: true, message: `Appointment status updated to "${status}".` });
@@ -80,17 +76,13 @@ const createPrescription = async (req, res, next) => {
     const doctorId = await getDoctorId(req.user.id);
     const { appointmentId, patientId, notes } = req.body;
 
-    if (!appointmentId || !patientId) {
-      return res.status(400).json({ success: false, message: 'appointmentId and patientId are required.' });
-    }
-
     // Verify appointment belongs to this doctor
     const [apptRows] = await db.query(
       'SELECT id FROM appointments WHERE id = ? AND doctor_id = ?',
       [appointmentId, doctorId]
     );
     if (apptRows.length === 0) {
-      return res.status(403).json({ success: false, message: 'Appointment not found or not yours.' });
+      throw new ForbiddenError('Appointment not found or not yours.');
     }
 
     const fileUrl = req.file ? `/uploads/${req.file.filename}` : null;
@@ -120,10 +112,6 @@ const createSlots = async (req, res, next) => {
   try {
     const doctorId = await getDoctorId(req.user.id);
     const { slots } = req.body; // [{ date, time }]
-
-    if (!Array.isArray(slots) || slots.length === 0) {
-      return res.status(400).json({ success: false, message: 'slots array is required.' });
-    }
 
     const values = slots.map(({ date, time }) => [doctorId, date, time]);
 

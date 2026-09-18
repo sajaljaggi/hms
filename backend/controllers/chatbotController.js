@@ -1,5 +1,6 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const db = require('../config/db');
+const { NotFoundError, ConflictError } = require('../utils/errors');
 
 // ── Gemini Setup ──────────────────────────────────────────────────────────────
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -74,11 +75,7 @@ HOSPITAL INFO:
 // ── POST /api/chatbot/message ────────────────────────────────────────────────
 const sendMessage = async (req, res, next) => {
   try {
-    const { message, history = [] } = req.body;
-
-    if (!message || typeof message !== 'string' || !message.trim()) {
-      return res.status(400).json({ success: false, message: 'Message is required.' });
-    }
+    const { message, history } = req.body;
 
     const model = genAI.getGenerativeModel({ 
       model: 'gemini-2.5-flash',
@@ -167,10 +164,6 @@ const getChatbotSlots = async (req, res, next) => {
   try {
     const { doctorId, date } = req.query;
 
-    if (!doctorId || !date) {
-      return res.status(400).json({ success: false, message: 'doctorId and date are required.' });
-    }
-
     const [rows] = await db.query(
       `SELECT id, date, time
        FROM doctor_slots
@@ -192,10 +185,6 @@ const chatbotBook = async (req, res, next) => {
     const { doctorId, slotId, reason } = req.body;
     const patientId = req.user.id;
 
-    if (!doctorId || !slotId) {
-      return res.status(400).json({ success: false, message: 'doctorId and slotId are required.' });
-    }
-
     await conn.beginTransaction();
 
     // Lock the slot row
@@ -205,13 +194,11 @@ const chatbotBook = async (req, res, next) => {
     );
 
     if (slotRows.length === 0) {
-      await conn.rollback();
-      return res.status(404).json({ success: false, message: 'Slot not found.' });
+      throw new NotFoundError('Slot not found.');
     }
 
     if (slotRows[0].is_booked) {
-      await conn.rollback();
-      return res.status(409).json({ success: false, message: 'This slot is already booked. Please choose another.' });
+      throw new ConflictError('This slot is already booked. Please choose another.');
     }
 
     // Mark slot as booked

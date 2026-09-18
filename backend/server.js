@@ -16,6 +16,7 @@ const morgan            = require('morgan');
 
 // Error handler middleware
 const errorHandler = require('./middleware/errorHandler');
+const { NotFoundError } = require('./utils/errors');
 
 // DB + slot generator
 const db = require('./config/db');
@@ -50,8 +51,8 @@ app.get('/api/health', (req, res) => {
 });
 
 // 404 handler
-app.use((req, res) => {
-  res.status(404).json({ success: false, message: `Route ${req.method} ${req.originalUrl} not found.` });
+app.use((req, res, next) => {
+  next(new NotFoundError(`Route ${req.method} ${req.originalUrl} not found.`));
 });
 
 // Global error handler (must be last)

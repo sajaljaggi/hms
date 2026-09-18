@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { generateSlotsForDoctorDate, generateSlotsForAllDoctors } = require('../utils/generateSlots');
+const { NotFoundError, ConflictError, ValidationError } = require('../utils/errors');
 
 // ─── GET /api/doctors?specialization=xxx ───────────────────────────────────
 const getDoctors = async (req, res, next) => {
@@ -32,10 +33,6 @@ const getAvailableSlots = async (req, res, next) => {
   try {
     const { doctorId, date } = req.query;
 
-    if (!doctorId || !date) {
-      return res.status(400).json({ success: false, message: 'doctorId and date are required.' });
-    }
-
     // Auto-generate slots for this doctor+date if not yet created
     await generateSlotsForDoctorDate(doctorId, date);
 
@@ -61,10 +58,6 @@ const bookAppointment = async (req, res, next) => {
     const { doctorId, slotId, reason } = req.body;
     const patientId = req.user.id;
 
-    if (!doctorId || !slotId) {
-      return res.status(400).json({ success: false, message: 'doctorId and slotId are required.' });
-    }
-
     await conn.beginTransaction();
 
     // Lock the slot row to prevent race conditions (double-booking)
@@ -74,18 +67,15 @@ const bookAppointment = async (req, res, next) => {
     );
 
     if (slotRows.length === 0) {
-      await conn.rollback();
-      return res.status(404).json({ success: false, message: 'Slot not found.' });
+      throw new NotFoundError('Slot not found.');
     }
 
     if (slotRows[0].is_booked) {
-      await conn.rollback();
-      return res.status(409).json({ success: false, message: 'This slot is already booked. Please choose another.' });
+      throw new ConflictError('This slot is already booked. Please choose another.');
     }
 
     if (!slotRows[0].is_available) {
-      await conn.rollback();
-      return res.status(400).json({ success: false, message: 'This slot has been blocked by the administrator.' });
+      throw new ValidationError('This slot has been blocked by the administrator.');
     }
 
     // Reject if slot date+time is already in the past
@@ -102,8 +92,7 @@ const bookAppointment = async (req, res, next) => {
     }
     const slotDateTime = new Date(`${dateStr}T${slotRow.time}`);
     if (slotDateTime < new Date()) {
-      await conn.rollback();
-      return res.status(400).json({ success: false, message: 'This time slot has already passed and can no longer be booked.' });
+      throw new ValidationError('This time slot has already passed and can no longer be booked.');
     }
 
     // Mark slot as booked
