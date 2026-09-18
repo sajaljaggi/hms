@@ -1,0 +1,17 @@
+
+# Environment variables
+.env
+backend/.env
+.env.*
+!.env.example
+!backend/.env.example
+
+# Dependencies
+node_modules/
+
+# OS files
+.DS_Store
+
+# Uploaded runtime content
+backend/uploads/*
+!backend/uploads/.gitkeep
