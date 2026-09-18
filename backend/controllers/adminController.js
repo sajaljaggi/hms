@@ -27,7 +27,7 @@ const getAllUsers = async (req, res, next) => {
 const getAllDoctors = async (req, res, next) => {
   try {
     const [rows] = await db.query(
-      `SELECT d.id, u.id AS user_id, u.name, u.email, d.specialization, d.fees, d.rating, d.rating_count, u.phone, u.created_at
+      `SELECT d.id, u.id AS user_id, u.name, u.email, d.specialization, d.fees, d.rating, d.rating_count, d.profile_image, u.phone, u.created_at
        FROM doctors d
        JOIN users u ON d.user_id = u.id
        ORDER BY u.name ASC`
@@ -112,10 +112,22 @@ const createDoctor = async (req, res, next) => {
       [name, email, hashed, phone || null]
     );
 
-    await db.query(
-      'INSERT INTO doctors (user_id, specialization, fees) VALUES (?, ?, ?)',
-      [userResult.insertId, specialization, fees]
+    const profileImage = req.file ? req.file.filename : null;
+    const [doctorResult] = await db.query(
+      'INSERT INTO doctors (user_id, specialization, fees, profile_image) VALUES (?, ?, ?, ?)',
+      [userResult.insertId, specialization, fees, profileImage]
     );
+
+    // Auto-generate slots for the next 14 days
+    const newDoctorId = doctorResult.insertId;
+    const { format, addDays } = require('date-fns');
+    const today = new Date();
+    const slotPromises = [];
+    for (let i = 0; i < 14; i++) {
+      const date = format(addDays(today, i), 'yyyy-MM-dd');
+      slotPromises.push(generateSlotsForDoctorDate(newDoctorId, date));
+    }
+    await Promise.all(slotPromises);
 
     res.status(201).json({ success: true, message: 'Doctor account created successfully.' });
   } catch (err) {
@@ -220,10 +232,23 @@ const updateDoctor = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { name, phone, specialization, fees } = req.body;
-    const [[doctor]] = await db.query('SELECT user_id FROM doctors WHERE id=?', [id]);
+    const [[doctor]] = await db.query('SELECT user_id, profile_image FROM doctors WHERE id=?', [id]);
     if (!doctor) return res.status(404).json({ success: false, message: 'Doctor not found.' });
     await db.query('UPDATE users SET name=?, phone=? WHERE id=?', [name, phone || null, doctor.user_id]);
-    await db.query('UPDATE doctors SET specialization=?, fees=? WHERE id=?', [specialization, fees, id]);
+
+    // Handle optional image upload
+    if (req.file) {
+      // Delete old image if it exists
+      if (doctor.profile_image) {
+        const fs = require('fs');
+        const path = require('path');
+        const oldPath = path.join(__dirname, '..', 'uploads', 'doctors', doctor.profile_image);
+        fs.unlink(oldPath, () => {}); // ignore errors
+      }
+      await db.query('UPDATE doctors SET specialization=?, fees=?, profile_image=? WHERE id=?', [specialization, fees, req.file.filename, id]);
+    } else {
+      await db.query('UPDATE doctors SET specialization=?, fees=? WHERE id=?', [specialization, fees, id]);
+    }
     res.json({ success: true, message: 'Doctor updated.' });
   } catch (err) {
     next(err);

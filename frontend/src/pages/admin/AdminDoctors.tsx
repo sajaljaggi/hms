@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
-import { Search, AlertCircle, Trash2, Edit3, X, Check, Stethoscope, Plus, ArrowLeft, Star, Calendar } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { Search, AlertCircle, Trash2, Edit3, X, Check, Stethoscope, Plus, ArrowLeft, Star, Calendar, Upload, Image } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { format } from 'date-fns';
 import SlotManagement from './SlotManagement';
 
+const API_BASE = 'http://localhost:5001';
+
 interface Doctor {
   id: number; user_id: number; name: string; email: string; specialization: string;
-  fees: number; rating: number; rating_count: number; phone: string; created_at: string;
+  fees: number; rating: number; rating_count: number; profile_image: string | null; phone: string; created_at: string;
 }
 
 const SPECIALIZATIONS = [
@@ -30,18 +32,26 @@ export default function AdminDoctors() {
 
   // Add doctor form
   const [addForm, setAddForm]    = useState({ name: '', email: '', password: '', specialization: '', fees: '', phone: '' });
+  const [addImageFile, setAddImageFile] = useState<File | null>(null);
+  const [addImagePreview, setAddImagePreview] = useState<string | null>(null);
   const [addError, setAddError]  = useState('');
+  const addFileRef = useRef<HTMLInputElement>(null);
+
+  // Edit image state
+  const [editImageFile, setEditImageFile] = useState<File | null>(null);
+  const [editImagePreview, setEditImagePreview] = useState<string | null>(null);
+  const editFileRef = useRef<HTMLInputElement>(null);
   const [adding, setAdding]      = useState(false);
 
-  const fetchDoctors = () => {
-    setLoading(true);
+  const fetchDoctors = (isInitial = false) => {
+    if (isInitial) setLoading(true);
     adminService.getDoctors()
       .then(res => setDoctors(res.data.data))
       .catch(() => setError('Failed to load doctors.'))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchDoctors(); }, []);
+  useEffect(() => { fetchDoctors(true); }, []);
 
   const flash = (msg: string) => {
     setSuccessMsg(msg);
@@ -83,18 +93,23 @@ export default function AdminDoctors() {
     if (!selected) return;
     setSaving(true);
     try {
-      await adminService.updateDoctor(selected.id, {
-        name: editForm.name,
-        phone: editForm.phone,
-        specialization: editForm.specialization,
-        fees: Number(editForm.fees),
-      });
+      const fd = new FormData();
+      fd.append('name', editForm.name);
+      fd.append('phone', editForm.phone);
+      fd.append('specialization', editForm.specialization);
+      fd.append('fees', editForm.fees);
+      if (editImageFile) fd.append('profileImage', editImageFile);
+      await adminService.updateDoctor(selected.id, fd);
+      const newImage = editImageFile ? URL.createObjectURL(editImageFile) : undefined;
       setDoctors(prev => prev.map(d => d.id === selected.id
         ? { ...d, name: editForm.name, phone: editForm.phone, specialization: editForm.specialization, fees: Number(editForm.fees) }
         : d
       ));
       setEditing(false);
+      setEditImageFile(null);
+      setEditImagePreview(null);
       flash('Doctor updated successfully.');
+      fetchDoctors(); // refresh to get new image URL
     } catch {
       setError('Failed to update doctor.');
     } finally {
@@ -112,15 +127,18 @@ export default function AdminDoctors() {
     setAdding(true);
     setAddError('');
     try {
-      await adminService.createDoctor({
-        name: addForm.name,
-        email: addForm.email,
-        password: addForm.password,
-        specialization: addForm.specialization,
-        fees: Number(addForm.fees),
-        phone: addForm.phone || undefined,
-      });
+      const fd = new FormData();
+      fd.append('name', addForm.name);
+      fd.append('email', addForm.email);
+      fd.append('password', addForm.password);
+      fd.append('specialization', addForm.specialization);
+      fd.append('fees', addForm.fees);
+      if (addForm.phone) fd.append('phone', addForm.phone);
+      if (addImageFile) fd.append('profileImage', addImageFile);
+      await adminService.createDoctor(fd);
       setAddForm({ name: '', email: '', password: '', specialization: '', fees: '', phone: '' });
+      setAddImageFile(null);
+      setAddImagePreview(null);
       flash('Doctor added successfully!');
       fetchDoctors();
       setView('list');
@@ -131,7 +149,7 @@ export default function AdminDoctors() {
     }
   };
 
-  if (loading) return <div className="flex items-center justify-center h-96"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-teal-600"></div></div>;
+  if (loading && doctors.length === 0) return <div className="flex items-center justify-center h-96"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-teal-600"></div></div>;
 
   // ── Sub-view: Add Doctor ──
   if (view === 'add') {
@@ -182,6 +200,25 @@ export default function AdminDoctors() {
                 <label className="block text-xs font-medium text-gray-500 mb-1">Phone</label>
                 <input type="text" value={addForm.phone} onChange={e => setAddForm(f => ({ ...f, phone: e.target.value }))}
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-400" />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-500 mb-1">Profile Photo</label>
+                <div className="flex items-center gap-4">
+                  {addImagePreview ? (
+                    <img src={addImagePreview} alt="Preview" className="w-16 h-16 rounded-full object-cover border-2 border-teal-200" />
+                  ) : (
+                    <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center border-2 border-dashed border-gray-300">
+                      <Image className="w-6 h-6 text-gray-400" />
+                    </div>
+                  )}
+                  <button type="button" onClick={() => addFileRef.current?.click()}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition text-gray-600">
+                    <Upload className="w-4 h-4" /> Choose Image
+                  </button>
+                  <input ref={addFileRef} type="file" accept=".jpg,.jpeg,.png,.webp" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) { setAddImageFile(f); setAddImagePreview(URL.createObjectURL(f)); } }} />
+                  {addImageFile && <span className="text-xs text-gray-400 truncate max-w-[120px]">{addImageFile.name}</span>}
+                </div>
               </div>
             </div>
             <div className="pt-2">
@@ -264,9 +301,13 @@ export default function AdminDoctors() {
                   ? 'bg-teal-50 border-l-4 border-l-teal-500'
                   : 'hover:bg-gray-50 border-l-4 border-l-transparent'}`}
             >
-              <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold flex-shrink-0">
-                {d.name.replace(/^Dr\.\s*/, '').charAt(0).toUpperCase()}
-              </div>
+              {d.profile_image ? (
+                <img src={`${API_BASE}/uploads/doctors/${d.profile_image}`} alt={d.name} className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold flex-shrink-0">
+                  {d.name.replace(/^Dr\.\s*/, '').charAt(0).toUpperCase()}
+                </div>
+              )}
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-gray-900 truncate">{d.name}</p>
                 <div className="flex items-center justify-between">
@@ -310,9 +351,13 @@ export default function AdminDoctors() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
               <div className="flex items-start justify-between mb-5">
                 <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-full bg-blue-600 text-white flex items-center justify-center text-xl font-bold">
-                    {selected.name.replace(/^Dr\.\s*/, '').charAt(0).toUpperCase()}
-                  </div>
+                  {selected.profile_image ? (
+                    <img src={`${API_BASE}/uploads/doctors/${selected.profile_image}`} alt={selected.name} className="w-14 h-14 rounded-full object-cover" />
+                  ) : (
+                    <div className="w-14 h-14 rounded-full bg-blue-600 text-white flex items-center justify-center text-xl font-bold">
+                      {selected.name.replace(/^Dr\.\s*/, '').charAt(0).toUpperCase()}
+                    </div>
+                  )}
                   <div>
                     <h3 className="text-xl font-bold text-gray-900">{selected.name}</h3>
                     <p className="text-sm text-gray-500">{selected.email}</p>
@@ -379,12 +424,33 @@ export default function AdminDoctors() {
                     <input type="number" value={editForm.fees} onChange={e => setEditForm(f => ({ ...f, fees: e.target.value }))} min="0"
                       className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-400" />
                   </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Profile Photo</label>
+                    <div className="flex items-center gap-4">
+                      {editImagePreview ? (
+                        <img src={editImagePreview} alt="Preview" className="w-14 h-14 rounded-full object-cover border-2 border-teal-200" />
+                      ) : selected?.profile_image ? (
+                        <img src={`${API_BASE}/uploads/doctors/${selected.profile_image}`} alt="Current" className="w-14 h-14 rounded-full object-cover border-2 border-gray-200" />
+                      ) : (
+                        <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center border-2 border-dashed border-gray-300">
+                          <Image className="w-6 h-6 text-gray-400" />
+                        </div>
+                      )}
+                      <button type="button" onClick={() => editFileRef.current?.click()}
+                        className="flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition text-gray-600">
+                        <Upload className="w-4 h-4" /> {selected?.profile_image || editImageFile ? 'Change' : 'Upload'}
+                      </button>
+                      <input ref={editFileRef} type="file" accept=".jpg,.jpeg,.png,.webp" className="hidden"
+                        onChange={e => { const f = e.target.files?.[0]; if (f) { setEditImageFile(f); setEditImagePreview(URL.createObjectURL(f)); } }} />
+                      {editImageFile && <span className="text-xs text-gray-400 truncate max-w-[120px]">{editImageFile.name}</span>}
+                    </div>
+                  </div>
                 </div>
                 <div className="flex gap-2 pt-2">
                   <button onClick={saveEdit} disabled={saving} className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 transition">
                     <Check className="w-4 h-4" /> {saving ? 'Saving…' : 'Save Changes'}
                   </button>
-                  <button onClick={() => setEditing(false)} className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 transition">
+                  <button onClick={() => { setEditing(false); setEditImageFile(null); setEditImagePreview(null); }} className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 transition">
                     <X className="w-4 h-4" /> Cancel
                   </button>
                 </div>

@@ -7,7 +7,7 @@ const getDoctors = async (req, res, next) => {
     const { specialization } = req.query;
 
     let sql = `
-      SELECT d.id, u.name, d.specialization, d.fees, u.email
+      SELECT d.id, u.name, d.specialization, d.fees, d.profile_image, u.email
       FROM doctors d
       JOIN users u ON d.user_id = u.id
     `;

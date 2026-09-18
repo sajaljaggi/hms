@@ -11,7 +11,7 @@ const SPECIALIZATIONS = [
   { name: 'General Medicine', icon: Stethoscope, color: 'text-blue-500', bg: 'bg-blue-50', border: 'border-blue-200', desc: 'Overall health & Primary Care. Treats common fever, cold, stomach aches, etc.' },
 ];
 
-interface Doctor { id: number; name: string; specialization: string; fees: number; }
+interface Doctor { id: number; name: string; specialization: string; fees: number; profile_image: string | null; }
 interface Slot {
   id: number;
   date: string;
@@ -231,7 +231,9 @@ export default function BookAppointment() {
                       ${doctor?.id === d.id ? 'border-teal-500 shadow-xl ring-2 ring-teal-500 scale-[1.02]' : 'border-gray-200 hover:shadow-lg hover:border-teal-300'}`}>
                     <div className="w-full h-40 bg-gray-200 overflow-hidden relative group">
                       <img
-                        src={`https://i.pravatar.cc/300?u=${d.id}${d.name.replace(/\s+/g, '')}`}
+                        src={d.profile_image
+                          ? `http://localhost:5001/uploads/doctors/${d.profile_image}`
+                          : `https://ui-avatars.com/api/?name=${encodeURIComponent(d.name)}&background=0f766e&color=fff&size=300`}
                         alt={d.name}
                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                         onError={(e) => { e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(d.name)}&background=0f766e&color=fff&size=300`; }}

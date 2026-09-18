@@ -5,10 +5,10 @@ export const adminService = {
   getDoctors:      ()         => api.get('/admin/doctors'),
   getAppointments: (status?: string) => api.get('/admin/appointments', { params: status ? { status } : {} }),
   deleteUser:      (id: number) => api.delete(`/admin/user/${id}`),
-  createDoctor:    (data: object) => api.post('/admin/doctors', data),
+  createDoctor:    (data: FormData) => api.post('/admin/doctors', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
   // CRUD additions
   updateUser:        (id: number, data: object) => api.patch(`/admin/users/${id}`, data),
-  updateDoctor:      (id: number, data: object) => api.patch(`/admin/doctors/${id}`, data),
+  updateDoctor:      (id: number, data: FormData) => api.patch(`/admin/doctors/${id}`, data, { headers: { 'Content-Type': 'multipart/form-data' } }),
   deleteAppointment: (id: number) => api.delete(`/admin/appointments/${id}`),
   updateAppointment: (id: number, data: { status: string }) => api.patch(`/admin/appointments/${id}`, data),
   // Slot management

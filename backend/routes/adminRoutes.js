@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const auth        = require('../middleware/auth');
 const requireRole = require('../middleware/role');
+const { doctorImageUpload } = require('../middleware/upload');
 const {
   getAllUsers,
   getAllDoctors,
@@ -23,11 +24,11 @@ router.use(auth, requireRole('admin'));
 
 router.get('/users',                    getAllUsers);         // GET    /api/admin/users
 router.get('/doctors',                  getAllDoctors);       // GET    /api/admin/doctors
-router.post('/doctors',                 createDoctor);        // POST   /api/admin/doctors
+router.post('/doctors',                 doctorImageUpload.single('profileImage'), createDoctor);  // POST   /api/admin/doctors
 router.get('/appointments',             getAllAppointments);  // GET    /api/admin/appointments
 router.delete('/user/:id',              deleteUser);          // DELETE /api/admin/user/:id
 router.patch('/users/:id',              updateUser);          // PATCH  /api/admin/users/:id
-router.patch('/doctors/:id',            updateDoctor);        // PATCH  /api/admin/doctors/:id
+router.patch('/doctors/:id',            doctorImageUpload.single('profileImage'), updateDoctor);  // PATCH  /api/admin/doctors/:id
 router.delete('/appointments/:id',      deleteAppointment);   // DELETE /api/admin/appointments/:id
 router.patch('/appointments/:id',       updateAppointment);   // PATCH  /api/admin/appointments/:id
 
