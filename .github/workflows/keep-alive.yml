@@ -1,0 +1,33 @@
+name: Keep-alive ping
+
+# Aiven's free MySQL tier auto-powers-off after ~24h with no *database
+# query* activity (not just HTTP traffic), then needs a manual resume from
+# their dashboard. Pinging /api/health every 12h — which now runs a real
+# `SELECT 1` query, not just a static response — keeps it comfortably
+# inside that window without you having to remember.
+#
+# Caveat: GitHub disables scheduled workflows on a repo after 60 days with
+# no commits/pushes to it. If you go quiet on this repo for that long, this
+# stops firing and Aiven will pause again — check the Actions tab
+# occasionally, or push something, to keep the schedule alive too.
+#
+# Setup: add a repository variable BACKEND_HEALTH_URL (Settings > Secrets
+# and variables > Actions > Variables) set to your deployed backend's
+# health URL, e.g. https://hms-backend.onrender.com/api/health
+
+on:
+  schedule:
+    - cron: '0 */12 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend health endpoint (touches the DB)
+        run: |
+          if [ -z "${{ vars.BACKEND_HEALTH_URL }}" ]; then
+            echo "BACKEND_HEALTH_URL repository variable is not set — see this workflow's comments for setup." >&2
+            exit 1
+          fi
+          curl -sf "${{ vars.BACKEND_HEALTH_URL }}"

@@ -16,6 +16,7 @@ const chatbotRoutes     = require('./routes/chatbotRoutes');
 const errorHandler = require('./middleware/errorHandler');
 const { NotFoundError } = require('./utils/errors');
 const { issueCsrfToken, verifyCsrf } = require('./middleware/csrf');
+const db = require('./config/db');
 
 const app = express();
 
@@ -45,9 +46,20 @@ app.use('/api',         appointmentRoutes); // /api/doctors, /api/slots, /api/ap
 app.use('/api/admin',   adminRoutes);
 app.use('/api/chatbot', chatbotRoutes);
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ success: true, message: 'HMS API is running 🚀', timestamp: new Date().toISOString() });
+// Health check — also queries the DB (not just a liveness ping) so it
+// doubles as the target for the keep-alive workflow: free-tier managed
+// MySQL hosts (e.g. Aiven) pause on lack of *database query* activity, not
+// just HTTP traffic. Always returns 200 so this can still serve as Render's
+// shallow health check without flapping on a transient DB hiccup — the
+// `database` field is what a keep-alive ping or deeper monitor should read.
+app.get('/api/health', async (req, res) => {
+  let database = 'connected';
+  try {
+    await db.query('SELECT 1');
+  } catch {
+    database = 'disconnected';
+  }
+  res.json({ success: true, message: 'HMS API is running 🚀', timestamp: new Date().toISOString(), database });
 });
 
 // 404 handler

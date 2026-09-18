@@ -3,10 +3,17 @@
 # Values left blank (sync: false) are prompted for at import time — never
 # commit real secrets here.
 #
-# MySQL is NOT included: Render doesn't offer managed MySQL. Provision one
-# separately (Railway, etc.) and paste its host/user/password/database/port
-# into DB_HOST / DB_USER / DB_PASSWORD / DB_NAME / DB_PORT below, with
-# DB_SSL=true.
+# MySQL is NOT included: Render doesn't offer managed MySQL. This project
+# uses Aiven's free MySQL tier (aiven.io/free-mysql-database — no card,
+# real MySQL with full foreign-key support). Create a service there, then
+# paste its host/port/user/password/database into DB_HOST / DB_PORT /
+# DB_USER / DB_PASSWORD / DB_NAME below, with DB_SSL=true.
+#
+# Aiven's free tier auto-powers-off after ~24h of no database query
+# activity — see .github/workflows/keep-alive.yml, which pings
+# /api/health (a real DB query, not just a liveness check) every 12h to
+# prevent that. Set that workflow's BACKEND_HEALTH_URL repo variable to
+# this service's URL + /api/health once it's deployed.
 
 services:
   - type: web
