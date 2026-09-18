@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 import { authService } from '../services/authService';
 
 export type Role = 'patient' | 'doctor' | 'admin' | null;
@@ -23,13 +23,15 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-
-  useEffect(() => {
-    // Restore session from localStorage on page refresh
-    const stored = localStorage.getItem('hms_user');
-    if (stored) setUser(JSON.parse(stored));
-  }, []);
+  // Initialize synchronously from localStorage to prevent redirect flash on refresh
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const stored = localStorage.getItem('hms_user');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
 
   const login = async (email: string, password: string) => {
     const { data } = await authService.login({ email, password });
