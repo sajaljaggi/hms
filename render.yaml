@@ -24,6 +24,11 @@ services:
     dockerContext: .
     plan: free
     healthCheckPath: /api/health
+    # Render's free plan has no Shell access, so there's no one-off way to
+    # run a migration by hand — instead, apply schema.sql + migrations
+    # (idempotent, safe to repeat) before every boot, same as
+    # docker-compose.yml already does for local dev.
+    dockerCommand: sh -c "node database/migrate.js && node server.js"
     envVars:
       - key: NODE_ENV
         value: production
