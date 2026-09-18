@@ -3,6 +3,7 @@ import { Clock, CheckCircle, UserCheck, AlertCircle, Heart, Activity, Brain, Bon
 import { format, addDays, parse, addMinutes, isToday, isBefore, set } from 'date-fns';
 import { patientService } from '../../services/patientService';
 import { getErrorMessage } from '../../utils/getErrorMessage';
+import { uploadUrl } from '../../config';
 
 const SPECIALIZATIONS = [
   { name: 'Cardiology', icon: Heart, color: 'text-red-500', bg: 'bg-red-50', border: 'border-red-200', desc: 'Heart & Blood Vessels. Treats heart attacks, high blood pressure, and related issues.' },
@@ -233,7 +234,7 @@ export default function BookAppointment() {
                     <div className="w-full h-40 bg-gray-200 overflow-hidden relative group">
                       <img
                         src={d.profile_image
-                          ? `http://localhost:5001/uploads/doctors/${d.profile_image}`
+                          ? uploadUrl(`doctors/${d.profile_image}`)
                           : `https://ui-avatars.com/api/?name=${encodeURIComponent(d.name)}&background=0f766e&color=fff&size=300`}
                         alt={d.name}
                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"

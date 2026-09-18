@@ -1,0 +1,63 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Import via Render dashboard: New > Blueprint > select this repo.
+# Values left blank (sync: false) are prompted for at import time — never
+# commit real secrets here.
+#
+# MySQL is NOT included: Render doesn't offer managed MySQL. Provision one
+# separately (Railway, etc.) and paste its host/user/password/database/port
+# into DB_HOST / DB_USER / DB_PASSWORD / DB_NAME / DB_PORT below, with
+# DB_SSL=true.
+
+services:
+  - type: web
+    name: hms-backend
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: DB_SSL
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: ACCESS_TOKEN_TTL_MIN
+        value: 15
+      - key: REFRESH_TOKEN_TTL_DAYS
+        value: 7
+      - key: CORS_ORIGIN
+        sync: false # set to your Vercel frontend URL, e.g. https://your-app.vercel.app
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: hms-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: hms-redis
+          property: port
+
+  - type: redis
+    name: hms-redis
+    plan: free
+    ipAllowList: [] # only reachable from other services in this Render account

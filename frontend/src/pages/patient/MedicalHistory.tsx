@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { FileText, Calendar, Clock } from 'lucide-react';
 import { patientService } from '../../services/patientService';
 import { format } from 'date-fns';
+import { backendFileUrl } from '../../config';
 
 interface Record {
   id: number; notes: string; file_url?: string; created_at: string;
@@ -58,7 +59,7 @@ export default function MedicalHistory() {
               </div>
             )}
             {r.file_url && (
-              <a href={r.file_url} target="_blank" rel="noopener noreferrer"
+              <a href={backendFileUrl(r.file_url)} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline">
                 <FileText className="w-3.5 h-3.5" /> View Attached File
               </a>

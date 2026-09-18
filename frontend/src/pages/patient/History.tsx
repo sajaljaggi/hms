@@ -3,6 +3,7 @@ import { Calendar, Clock, Download, AlertCircle, Search, Filter, X, Star } from 
 import { patientService } from '../../services/patientService';
 import { format, parse, addMinutes } from 'date-fns';
 import { getErrorMessage } from '../../utils/getErrorMessage';
+import { backendFileUrl } from '../../config';
 
 interface Appointment {
   id: number; status: string; date: string; time: string;
@@ -213,7 +214,7 @@ export default function History() {
                 </span>
                 <span className="text-sm font-bold text-teal-700">₹{appt.fees}</span>
                 {appt.prescription_file && (
-                  <a href={appt.prescription_file} target="_blank" rel="noopener noreferrer"
+                  <a href={backendFileUrl(appt.prescription_file)} target="_blank" rel="noopener noreferrer"
                     className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium">
                     <Download className="w-3.5 h-3.5" /> Download Prescription
                   </a>

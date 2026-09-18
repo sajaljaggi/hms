@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { API_BASE_URL } from '../config';
 
 // Reads a cookie value directly — used for the CSRF double-submit pattern.
 // (The auth cookies themselves are httpOnly and never touched by JS.)
@@ -9,7 +10,7 @@ function getCookie(name: string): string | null {
 
 // Base Axios instance — all requests go through this
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
   withCredentials: true, // send/receive the httpOnly auth cookies
 });

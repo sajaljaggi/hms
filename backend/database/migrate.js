@@ -14,19 +14,32 @@ const { applySchema, SQL_FILES } = require('./applySchema');
 
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 
-async function migrate() {
-  const { DB_HOST, DB_USER, DB_PASSWORD, DB_NAME } = process.env;
+const useSSL = process.env.DB_SSL === 'true';
+const sslOption = useSSL ? { ssl: { rejectUnauthorized: true } } : {};
 
-  const rootConn = await mysql.createConnection({ host: DB_HOST, user: DB_USER, password: DB_PASSWORD });
-  await rootConn.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\``);
-  await rootConn.end();
+async function migrate() {
+  const { DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME } = process.env;
+  const port = DB_PORT ? parseInt(DB_PORT, 10) : undefined;
+
+  // Managed hosts (Railway, PlanetScale, RDS, ...) typically pre-provision
+  // the database and may not grant CREATE DATABASE to the app user — that's
+  // fine, DB_NAME already exists there, so tolerate the failure and move on.
+  try {
+    const rootConn = await mysql.createConnection({ host: DB_HOST, port, user: DB_USER, password: DB_PASSWORD, ...sslOption });
+    await rootConn.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\``);
+    await rootConn.end();
+  } catch (err) {
+    console.warn(`⚠️  Could not run CREATE DATABASE IF NOT EXISTS (${err.message}) — assuming "${DB_NAME}" already exists.`);
+  }
 
   const conn = await mysql.createConnection({
     host: DB_HOST,
+    port,
     user: DB_USER,
     password: DB_PASSWORD,
     database: DB_NAME,
     multipleStatements: true,
+    ...sslOption,
   });
 
   await applySchema(conn);
