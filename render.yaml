@@ -41,6 +41,8 @@ services:
         sync: false
       - key: DB_SSL
         value: "true"
+      - key: DB_CA_CERT
+        sync: false # paste the PEM text from Aiven's "CA certificate" field — required to verify the TLS chain, not just encrypt it
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET

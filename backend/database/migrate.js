@@ -15,7 +15,12 @@ const { applySchema, SQL_FILES } = require('./applySchema');
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 
 const useSSL = process.env.DB_SSL === 'true';
-const sslOption = useSSL ? { ssl: { rejectUnauthorized: true } } : {};
+let sslOption = {};
+if (useSSL) {
+  sslOption = process.env.DB_CA_CERT
+    ? { ssl: { ca: process.env.DB_CA_CERT, rejectUnauthorized: true } }
+    : { ssl: { rejectUnauthorized: false } }; // see config/db.js for why
+}
 
 async function migrate() {
   const { DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME } = process.env;
