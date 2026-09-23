@@ -59,10 +59,18 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch {
         localStorage.removeItem('hms_user');
-        // Redirecting when already on /login just reloads the page, which
-        // remounts the app, which retries this exact flow again — an
-        // infinite reload loop for any logged-out visitor on that page.
-        if (window.location.pathname !== '/login') {
+        // Only force-navigate away from protected routes. This 401 can also
+        // come from the background /auth/me check that fires on every page
+        // load (including the public Home page) — redirecting unconditionally
+        // sent logged-out visitors straight to /login on every refresh, even
+        // on pages that never needed auth in the first place. Protected
+        // routes already redirect themselves via Layout's isAuthenticated
+        // check, so this only needs to catch a session dying mid-use on one
+        // of them.
+        const isProtectedRoute = ['/patient', '/doctor', '/admin'].some((prefix) =>
+          window.location.pathname.startsWith(prefix)
+        );
+        if (isProtectedRoute && window.location.pathname !== '/login') {
           window.location.href = '/login';
         }
         return Promise.reject(error);
