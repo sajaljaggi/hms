@@ -2,9 +2,18 @@ name: Keep-alive ping
 
 # Aiven's free MySQL tier auto-powers-off after ~24h with no *database
 # query* activity (not just HTTP traffic), then needs a manual resume from
-# their dashboard. Pinging /api/health every 12h — which now runs a real
-# `SELECT 1` query, not just a static response — keeps it comfortably
-# inside that window without you having to remember.
+# their dashboard — pinging can prevent it from ever sleeping, but cannot
+# wake it back up once it has. Every run before 2026-09-23 failed: Aiven
+# fell asleep once, which (via a since-fixed bug) made the backend
+# crash-loop entirely, so every ping after that hit a non-responding
+# server and hung for ~7 minutes before timing out — curl had no
+# --max-time set. Fixed both: the backend no longer crash-loops on a DB
+# outage, and this workflow now fails fast AND checks the actual
+# database:"connected" field in the response body, not just the HTTP
+# status — /api/health always returns 200 even when the DB is down (by
+# design, so the frontend gets a clean error instead of a hard failure),
+# so checking status code alone would have silently reported "success"
+# forever even with Aiven fast asleep.
 #
 # Caveat: GitHub disables scheduled workflows on a repo after 60 days with
 # no commits/pushes to it. If you go quiet on this repo for that long, this
@@ -24,10 +33,26 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping backend health endpoint (touches the DB)
+      - name: Ping backend health endpoint and verify the DB is actually reachable
         run: |
           if [ -z "${{ vars.BACKEND_HEALTH_URL }}" ]; then
             echo "BACKEND_HEALTH_URL repository variable is not set — see this workflow's comments for setup." >&2
             exit 1
           fi
-          curl -sf "${{ vars.BACKEND_HEALTH_URL }}"
+
+          response=$(curl -sf --connect-timeout 10 --max-time 30 "${{ vars.BACKEND_HEALTH_URL }}")
+          curl_status=$?
+
+          if [ $curl_status -ne 0 ]; then
+            echo "Request failed or timed out (curl exit $curl_status) — backend itself may be down." >&2
+            exit 1
+          fi
+
+          echo "$response"
+
+          if ! echo "$response" | grep -q '"database":"connected"'; then
+            echo "Backend responded, but the database is NOT connected — Aiven is likely asleep. Resume it from the Aiven dashboard." >&2
+            exit 1
+          fi
+
+          echo "OK — backend up, database connected."
