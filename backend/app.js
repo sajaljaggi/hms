@@ -20,6 +20,15 @@ const db = require('./config/db');
 
 const app = express();
 
+// Render sits in front of the app behind a reverse proxy. Without this,
+// req.ip resolves to the proxy's address for every request — identical for
+// every visitor — so express-rate-limit (keyed on req.ip below) ends up
+// sharing one rate-limit bucket across all users instead of one per real
+// client, tripping "too many requests" from aggregate traffic. `1` trusts
+// exactly one hop (Render's own proxy) and reads the real client IP from
+// X-Forwarded-For.
+app.set('trust proxy', 1);
+
 // ── Global Middleware ────────────────────────────────────────────────────────
 app.use(morgan('dev'));
 app.use(cors({
