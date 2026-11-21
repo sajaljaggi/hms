@@ -4,7 +4,7 @@ const db = require('../../config/db');
 const { createUserSession, authed, cleanupUsers } = require('../helpers/session');
 
 describe('beds routes', () => {
-  let admin, doctor, p1, p2, wardId, bedA, bedB;
+  let admin, doctor, p1, p2, p3, wardId, bedA, bedB, bedC, bedD;
   const ids = [];
 
   beforeAll(async () => {
@@ -12,16 +12,19 @@ describe('beds routes', () => {
     doctor = await createUserSession('doctor');
     p1 = await createUserSession('patient', { name: 'Zed Bedpatient' });
     p2 = await createUserSession('patient');
-    ids.push(admin.userId, doctor.userId, p1.userId, p2.userId);
+    p3 = await createUserSession('patient');
+    ids.push(admin.userId, doctor.userId, p1.userId, p2.userId, p3.userId);
     const res = await authed(request(app).post, '/api/beds/wards', admin)
       .send({ name: `Test Ward ${Date.now()}`, wardType: 'private', floor: 3 });
     wardId = res.body.data.id;
     const mk = async (n) => (await authed(request(app).post, '/api/beds', admin).send({ wardId, bedNumber: n, dailyRate: 100 })).body.data.id;
     bedA = await mk('T-1');
     bedB = await mk('T-2');
+    bedC = await mk('T-3');
+    bedD = await mk('T-4');
   });
   afterAll(async () => {
-    await db.query('DELETE FROM bed_allocations WHERE bed_id IN (?)', [[bedA, bedB]]);
+    await db.query('DELETE FROM bed_allocations WHERE bed_id IN (?)', [[bedA, bedB, bedC, bedD]]);
     await db.query('DELETE FROM wards WHERE id = ?', [wardId]); // cascades beds
     await cleanupUsers(ids);
   });
@@ -63,7 +66,7 @@ describe('beds routes', () => {
     expect(list.body.data.find((b) => b.id === bedB).allocation_id).toBeNull();
 
     const wards = await authed(request(app).get, '/api/beds/wards', admin);
-    expect(wards.body.data.find((w) => w.id === wardId)).toMatchObject({ total: 2, available: 1, occupied: 1 });
+    expect(wards.body.data.find((w) => w.id === wardId)).toMatchObject({ total: 4, available: 3, occupied: 1 });
 
     const stats = await authed(request(app).get, '/api/beds/stats', doctor);
     expect(stats.body.data.occupied).toBeGreaterThanOrEqual(1);
@@ -72,6 +75,11 @@ describe('beds routes', () => {
     expect((await authed(request(app).post, `/api/beds/allocations/${allocationId}/discharge`, doctor)).status).toBe(200);
     expect((await authed(request(app).post, `/api/beds/allocations/${allocationId}/discharge`, doctor)).status).toBe(409);
     expect((await allocate(bedA, p1)).status).toBe(201);
+  });
+
+  test('concurrent allocations of one patient to two beds: one 201, one 409, no 500', async () => {
+    const [x, y] = await Promise.all([allocate(bedC, p3), allocate(bedD, p3)]);
+    expect([x.status, y.status].sort()).toEqual([201, 409]);
   });
 
   test('status change on free bed works; unknown bed -> 404', async () => {

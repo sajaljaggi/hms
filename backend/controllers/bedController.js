@@ -12,7 +12,7 @@ async function inTransaction(fn) {
     await conn.commit();
     return result;
   } catch (err) {
-    await conn.rollback();
+    try { await conn.rollback(); } catch { /* keep the original error */ }
     throw err;
   } finally {
     conn.release();

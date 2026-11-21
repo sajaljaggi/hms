@@ -24,10 +24,21 @@ describe('allocateBed', () => {
     await expect(allocateBed(conn, args)).rejects.toThrow('Patient already admitted');
     expect(conn.query).toHaveBeenCalledTimes(3);
   });
+  test('locks bed, then patient user row (FOR UPDATE), then plain-reads open allocations', async () => {
+    const conn = connWith([{ id: 5, ward_id: 2, status: 'available' }], [{ id: 9 }], [{ id: 1 }]);
+    await allocateBed(conn, args).catch(() => {});
+    expect(conn.query.mock.calls[0][0]).toMatch(/FROM beds .*FOR UPDATE/);
+    expect(conn.query.mock.calls[1][0]).toMatch(/FROM users .*FOR UPDATE/);
+    expect(conn.query.mock.calls[2][0]).not.toMatch(/FOR UPDATE/);
+  });
+  test('bed flip guard failing -> ConflictError', async () => {
+    const conn = connWith([{ id: 5, ward_id: 2, status: 'available' }], [{ id: 9 }], [], { insertId: 77 }, { affectedRows: 0 });
+    await expect(allocateBed(conn, args)).rejects.toBeInstanceOf(ConflictError);
+  });
   test('success inserts, occupies the bed, and never manages the transaction', async () => {
-    const conn = connWith([{ id: 5, ward_id: 2, status: 'available' }], [{ id: 9 }], [], { insertId: 77 }, {});
+    const conn = connWith([{ id: 5, ward_id: 2, status: 'available' }], [{ id: 9 }], [], { insertId: 77 }, { affectedRows: 1 });
     await expect(allocateBed(conn, args)).resolves.toEqual({ allocationId: 77, bedId: 5, wardId: 2 });
-    expect(conn.query.mock.calls[4][0]).toMatch(/UPDATE beds SET status = 'occupied'/);
+    expect(conn.query.mock.calls[4][0]).toMatch(/UPDATE beds SET status = 'occupied' WHERE id = \? AND status = 'available'/);
     expect(conn.beginTransaction).not.toHaveBeenCalled();
     expect(conn.commit).not.toHaveBeenCalled();
     expect(conn.rollback).not.toHaveBeenCalled();
@@ -35,15 +46,26 @@ describe('allocateBed', () => {
 });
 
 describe('dischargeAllocation', () => {
+  const alloc = { patient_id: 9, discharged_at: null };
   test('missing -> NotFoundError', async () => {
     await expect(dischargeAllocation(connWith([]), 1)).rejects.toBeInstanceOf(NotFoundError);
   });
   test('already discharged -> ConflictError', async () => {
-    await expect(dischargeAllocation(connWith([{ id: 1, bed_id: 5, patient_id: 9, discharged_at: new Date() }]), 1)).rejects.toBeInstanceOf(ConflictError);
+    const conn = connWith([{ bed_id: 5 }], [{ status: 'available' }], [{ ...alloc, discharged_at: new Date() }]);
+    await expect(dischargeAllocation(conn, 1)).rejects.toThrow('already discharged');
   });
-  test('success frees the bed', async () => {
-    const conn = connWith([{ id: 1, bed_id: 5, patient_id: 9, discharged_at: null }], {}, {});
+  test('bed not occupied -> ConflictError, bed not overwritten', async () => {
+    const conn = connWith([{ bed_id: 5 }], [{ status: 'maintenance' }], [alloc]);
+    await expect(dischargeAllocation(conn, 1)).rejects.toThrow('not in occupied state');
+    expect(conn.query).toHaveBeenCalledTimes(3);
+  });
+  test('success locks bed before allocation, then frees the bed', async () => {
+    const conn = connWith([{ bed_id: 5 }], [{ status: 'occupied' }], [alloc], {}, {});
     await expect(dischargeAllocation(conn, 1)).resolves.toEqual({ bedId: 5, patientId: 9 });
-    expect(conn.query.mock.calls[2][0]).toMatch(/UPDATE beds SET status = 'available'/);
+    const sql = conn.query.mock.calls.map((c) => c[0]);
+    expect(sql[0]).not.toMatch(/FOR UPDATE/);
+    expect(sql[1]).toMatch(/FROM beds .*FOR UPDATE/);
+    expect(sql[2]).toMatch(/FROM bed_allocations .*bed_id = \? FOR UPDATE/);
+    expect(sql[4]).toMatch(/UPDATE beds SET status = 'available'/);
   });
 });
