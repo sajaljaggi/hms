@@ -50,6 +50,7 @@ export default function BookAppointment() {
   const [error,  setError]  = useState('');
   const [booking, setBooking] = useState(false);
   const [reason,  setReason]  = useState('');
+  const [consultationType, setConsultationType] = useState<'in_person' | 'video'>('in_person');
   const [infoSpec, setInfoSpec] = useState<string | null>(null);
 
   const [doctors, setDoctors]   = useState<Doctor[]>([]);
@@ -82,7 +83,7 @@ export default function BookAppointment() {
     if (!doctor || !slot) return;
     setBooking(true); setError('');
     try {
-      await patientService.bookAppointment(doctor.id, slot.id, reason);
+      await patientService.bookAppointment(doctor.id, slot.id, reason, consultationType);
       setBooked(true);
     } catch (err) {
       setError(getErrorMessage(err, 'Booking failed. Please try again.'));
@@ -93,7 +94,7 @@ export default function BookAppointment() {
 
   const reset = () => {
     setBooked(false); setSpec(''); setDate(null); setSlot(null);
-    setDoctor(null); setDoctors([]); setSlots([]); setReason('');
+    setDoctor(null); setDoctors([]); setSlots([]); setReason(''); setConsultationType('in_person');
   };
 
   // A slot is selectable only when: not past, not booked, not blocked
@@ -342,6 +343,12 @@ export default function BookAppointment() {
               <p className="text-sm text-teal-800 font-medium">Selected Consultation</p>
               <p className="text-lg font-bold text-teal-900">{doctor.name} &bull; ₹{doctor.fees}</p>
               <p className="text-sm text-teal-700">{format(date, 'MMM dd, yyyy')} &bull; {formatSlotRange(slot.time)}</p>
+            </div>
+            <div role="group" aria-label="Consultation type" className="flex rounded-lg border border-teal-300 overflow-hidden text-sm font-medium">
+              {([['in_person', 'In-person'], ['video', 'Video']] as const).map(([v, label]) => (
+                <button key={v} type="button" aria-pressed={consultationType === v} onClick={() => setConsultationType(v)}
+                  className={`px-4 py-2 ${consultationType === v ? 'bg-teal-600 text-white' : 'bg-white text-teal-800'}`}>{label}</button>
+              ))}
             </div>
             <button onClick={handleBook} disabled={booking}
               className="w-full sm:w-auto bg-teal-600 text-white py-3 px-8 rounded-lg font-bold shadow-md hover:bg-teal-700 transition disabled:opacity-60">
