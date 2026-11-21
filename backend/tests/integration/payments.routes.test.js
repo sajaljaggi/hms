@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const request = require('supertest');
 const app = require('../../app');
 const db = require('../../config/db');
-const { createUserSession, authed, cleanupUsers, csrfFrom } = require('../helpers/session');
+const { createUserSession, authed, cleanupUsers } = require('../helpers/session');
 
 const ENV_KEYS = ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET'];
 const WEBHOOK_SECRET = 'whsec_test_only';
@@ -20,6 +20,9 @@ describe('payment routes (mock mode)', () => {
     const [a] = await db.query("INSERT INTO appointments (patient_id, doctor_id, slot_id, status) VALUES (?, ?, ?, 'pending')", [patientId, doctor.doctorId, s.insertId]);
     return a.insertId;
   };
+  const paidNotes = async (apptId) => (await db.query(
+    "SELECT user_id FROM notifications WHERE type = 'payment' AND message LIKE ?", [`%appointment #${apptId}%`]
+  ))[0].map((n) => n.user_id).sort();
   const apptPaymentStatus = async (id) => (await db.query('SELECT payment_status FROM appointments WHERE id = ?', [id]))[0][0].payment_status;
   const sendWebhook = (bodyObj, eventId, secret = WEBHOOK_SECRET) => {
     const raw = JSON.stringify(bodyObj);
@@ -95,7 +98,7 @@ describe('payment routes (mock mode)', () => {
     expect(appts.body.data.find((a) => a.id === apptId).payment_status).toBe('paid');
   });
 
-  test('cancelled appointment -> 400, fail endpoint marks created order failed and a new order replaces it', async () => {
+  test('cancelled appointment -> 400, fail endpoint marks the order failed, the next order reuses it', async () => {
     const cancelled = await bookAppointment(patient.userId);
     await db.query("UPDATE appointments SET status = 'cancelled' WHERE id = ?", [cancelled]);
     expect((await post('/api/payments/orders', patient, { appointmentId: cancelled })).status).toBe(400);
@@ -107,9 +110,27 @@ describe('payment routes (mock mode)', () => {
     expect(fail.status).toBe(200);
     expect(fail.body.data.status).toBe('failed');
     const second = (await post('/api/payments/orders', patient, { appointmentId: apptId })).body.data;
-    expect(second.orderId).not.toBe(first.orderId);
+    expect(second.orderId).toBe(first.orderId); // Razorpay orders accept retries until paid
     const [rows] = await db.query('SELECT status, provider_order_id FROM payments WHERE appointment_id = ?', [apptId]);
-    expect(rows).toEqual([{ status: 'created', provider_order_id: second.orderId }]);
+    expect(rows).toEqual([{ status: 'created', provider_order_id: first.orderId }]);
+
+    // An amount change creates a new gateway order.
+    await db.query('UPDATE doctors SET fees = 800 WHERE id = ?', [doctor.doctorId]);
+    try {
+      const third = (await post('/api/payments/orders', patient, { appointmentId: apptId })).body.data;
+      expect(third).toMatchObject({ amount: 80000 });
+      expect(third.orderId).not.toBe(first.orderId);
+    } finally {
+      await db.query('UPDATE doctors SET fees = 750.5 WHERE id = ?', [doctor.doctorId]);
+    }
+
+    // A row created in another provider mode is not verified with this mode's secret.
+    const mismatch = await bookAppointment(patient.userId);
+    const m = (await post('/api/payments/orders', patient, { appointmentId: mismatch })).body.data;
+    await db.query("UPDATE payments SET provider = 'razorpay' WHERE provider_order_id = ?", [m.orderId]);
+    const bad = await post('/api/payments/verify', patient, { orderId: m.orderId, paymentId: m.mock.paymentId, signature: m.mock.signature });
+    expect(bad.status).toBe(400);
+    expect(await apptPaymentStatus(mismatch)).toBe('unpaid');
   });
 
   test('webhook: valid HMAC marks paid, duplicate event id is deduped, bad signature 400, no CSRF needed', async () => {
@@ -127,6 +148,7 @@ describe('payment routes (mock mode)', () => {
       expect(res.status).toBe(200);
       expect(res.body.data).toEqual({ received: true });
       expect(await apptPaymentStatus(apptId)).toBe('paid');
+      expect(await paidNotes(apptId)).toEqual([patient.userId, doctor.userId].sort()); // webhook path notifies too
 
       const dup = await sendWebhook(event, eventId);
       expect(dup.status).toBe(200);
@@ -144,10 +166,54 @@ describe('payment routes (mock mode)', () => {
     }
   });
 
+  test('webhook payment.failed marks failed, and the next order reuses the same order id', async () => {
+    process.env.RAZORPAY_WEBHOOK_SECRET = WEBHOOK_SECRET;
+    try {
+      const apptId = await bookAppointment(patient.userId);
+      const { orderId } = (await post('/api/payments/orders', patient, { appointmentId: apptId })).body.data;
+      const res = await sendWebhook({ event: 'payment.failed', payload: { payment: { entity: { id: `pay_f_${Date.now()}`, order_id: orderId } } } }, `evt_fail_${Date.now()}`);
+      expect(res.status).toBe(200);
+      const [[row]] = await db.query('SELECT status FROM payments WHERE provider_order_id = ?', [orderId]);
+      expect(row.status).toBe('failed');
+      expect(await apptPaymentStatus(apptId)).toBe('unpaid');
+      expect((await post('/api/payments/orders', patient, { appointmentId: apptId })).body.data.orderId).toBe(orderId);
+    } finally {
+      delete process.env.RAZORPAY_WEBHOOK_SECRET;
+    }
+  });
+
+  test('late capture on a replaced order falls back to the appointment in the order notes', async () => {
+    process.env.RAZORPAY_WEBHOOK_SECRET = WEBHOOK_SECRET;
+    const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const apptId = await bookAppointment(patient.userId);
+      const { orderId: oldOrder } = (await post('/api/payments/orders', patient, { appointmentId: apptId })).body.data;
+      const newOrder = `order_mock_replaced${Date.now()}`;
+      await db.query('UPDATE payments SET provider_order_id = ? WHERE provider_order_id = ?', [newOrder, oldOrder]);
+      const payId = `pay_late_${Date.now()}`;
+      const event = { event: 'payment.captured', payload: { payment: { entity: { id: payId, order_id: oldOrder, notes: { appointmentId: String(apptId) } } } } };
+      const res = await sendWebhook(event, `evt_late_${Date.now()}`);
+      expect(res.status).toBe(200);
+      expect(await apptPaymentStatus(apptId)).toBe('paid');
+      const [[row]] = await db.query('SELECT status, provider_order_id, provider_payment_id FROM payments WHERE appointment_id = ?', [apptId]);
+      expect(row).toEqual({ status: 'paid', provider_order_id: oldOrder, provider_payment_id: payId });
+      expect(errSpy.mock.calls.some((c) => String(c[0]).includes('RECONCILE'))).toBe(true);
+      expect(await paidNotes(apptId)).toEqual([patient.userId, doctor.userId].sort());
+
+      // No resolvable appointment: logged loudly and still acknowledged.
+      errSpy.mockClear();
+      const lost = await sendWebhook({ event: 'order.paid', payload: { payment: { entity: { id: 'pay_lost', order_id: 'order_unknown_x' } } } }, `evt_lost_${Date.now()}`);
+      expect(lost.status).toBe(200);
+      expect(errSpy.mock.calls.some((c) => String(c[0]).includes('could not be matched'))).toBe(true);
+    } finally {
+      errSpy.mockRestore();
+      delete process.env.RAZORPAY_WEBHOOK_SECRET;
+    }
+  });
+
   test('webhook with the secret unset is rejected, and other POSTs still require CSRF', async () => {
     expect((await sendWebhook({ event: 'order.paid' }, `evt_nosecret_${Date.now()}`)).status).toBe(400);
-    const csrf = csrfFrom(await request(app).get('/api/health'));
-    const noCsrf = await request(app).post('/api/payments/orders').set('Cookie', patient.cookies.replace(csrf.cookie, '')).send({ appointmentId: 1 });
+    const noCsrf = await request(app).post('/api/payments/orders').set('Cookie', patient.cookies).send({ appointmentId: 1 });
     expect(noCsrf.status).toBe(403);
   });
 });

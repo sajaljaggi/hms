@@ -49,10 +49,18 @@ describe('createOrder', () => {
 describe('verifyPayment', () => {
   test('bad signature -> 400, rolled back, nothing updated', async () => {
     const c = conn();
-    c.query.mockResolvedValueOnce([[{ doctor_user_id: 4 }]]);
+    c.query.mockResolvedValueOnce([[{ provider: 'mock' }]]);
     const { next } = await run(verifyPayment, { orderId: 'o', paymentId: 'p', signature: 'bad' }, c);
     expect(next.mock.calls[0][0].statusCode).toBe(400);
     expect(c.query).toHaveBeenCalledTimes(1);
     expect(c.rollback).toHaveBeenCalled();
+  });
+
+  test('payment row from another provider mode -> 400 before the signature is checked', async () => {
+    const c = conn();
+    c.query.mockResolvedValueOnce([[{ provider: 'razorpay' }]]);
+    const { next } = await run(verifyPayment, { orderId: 'o', paymentId: 'p', signature: 'abc' }, c);
+    expect(next.mock.calls[0][0].statusCode).toBe(400);
+    expect(gateway.verifyCheckoutSignature).not.toHaveBeenCalled();
   });
 });

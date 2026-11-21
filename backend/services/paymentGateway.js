@@ -3,17 +3,19 @@ const { AppError } = require('../utils/errors');
 
 const MOCK_SECRET = 'mock_secret_dev_only';
 
-// 'razorpay' when keys are set, 'mock' in dev/test, null (not configured) in production.
+// 'razorpay' when keys are set. Fails closed otherwise: 'mock' only in development/test or with an
+// explicit PAYMENT_MODE=mock, else null (not configured), because mock signatures use a public secret.
 function getMode() {
   if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) return 'razorpay';
-  return process.env.NODE_ENV === 'production' ? null : 'mock';
+  const mockAllowed = process.env.PAYMENT_MODE === 'mock' || ['development', 'test'].includes(process.env.NODE_ENV);
+  return mockAllowed ? 'mock' : null;
 }
 
 function notConfigured() {
   return new AppError('Online payment is not configured.', 503, 'PAYMENT_NOT_CONFIGURED');
 }
 
-// The mock secret is never used in production: there getMode() is null and this returns null.
+// The mock secret is used only when getMode() is 'mock'. With mode null this returns null.
 function keySecret() {
   const mode = getMode();
   if (mode === 'razorpay') return process.env.RAZORPAY_KEY_SECRET;
@@ -37,17 +39,21 @@ async function createOrder({ amountPaise, receipt, notes }) {
 
   const auth = Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64');
   let res;
+  let order;
   try {
     res = await fetch('https://api.razorpay.com/v1/orders', {
       method: 'POST',
       headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ amount: amountPaise, currency: 'INR', receipt, notes }),
+      signal: AbortSignal.timeout(10000),
     });
+    if (res.ok) order = await res.json();
   } catch {
     throw new AppError('Payment gateway is unreachable.', 502, 'PAYMENT_GATEWAY_ERROR');
   }
   if (!res.ok) throw new AppError(`Payment gateway error (${res.status}).`, 502, 'PAYMENT_GATEWAY_ERROR');
-  return res.json();
+  if (typeof order?.id !== 'string') throw new AppError('Payment gateway returned no order id.', 502, 'PAYMENT_GATEWAY_ERROR');
+  return order;
 }
 
 function signCheckout(orderId, paymentId) {

@@ -27,7 +27,9 @@ async function loadAppointment(q, appointmentId, patientId, lock) {
 }
 
 const PAYMENT_BY_APPT = 'SELECT id, provider_order_id, amount_paise, provider, status FROM payments WHERE appointment_id = ?';
-const reusable = (p, amount, mode) => p && p.status === 'created' && p.amount_paise === amount && p.provider === mode;
+// Razorpay orders accept retries until paid, so a created or failed order is reused while the amount and
+// provider are unchanged. Keeping one order id per appointment means a late capture still matches its row.
+const reusable = (p, amount, mode) => p && p.status !== 'paid' && p.amount_paise === amount && p.provider === mode;
 
 // POST /api/payments/orders
 // inTransaction retries its callback on deadlock, so the gateway call (an external side effect)
@@ -52,7 +54,10 @@ const createOrder = async (req, res, next) => {
       const lockedAmount = await loadAppointment(conn, appointmentId, patientId, true);
       const [[p]] = await conn.query(PAYMENT_BY_APPT, [appointmentId]);
       // Nothing changed, or a concurrent request already stored a usable order: hand out that one.
-      if (reusable(p, lockedAmount, mode)) return p.provider_order_id;
+      if (reusable(p, lockedAmount, mode)) {
+        if (p.status !== 'created') await conn.query("UPDATE payments SET status = 'created' WHERE id = ?", [p.id]);
+        return p.provider_order_id;
+      }
       if (!freshOrderId || lockedAmount !== amount) throw new ConflictError('Payment details changed, please retry.');
       if (p) {
         await conn.query(
@@ -79,17 +84,37 @@ const createOrder = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// Idempotent. Returns null when the order id is unknown.
-async function markPaid(conn, orderId, paymentId) {
+// Idempotent. Finds the payment by order id, or by fallbackAppointmentId (webhook order notes) when that
+// order id is no longer stored. Returns null when neither resolves to a payment row.
+async function markPaid(conn, orderId, paymentId, fallbackAppointmentId = null) {
   const [[ref]] = await conn.query('SELECT appointment_id FROM payments WHERE provider_order_id = ?', [orderId]);
-  if (!ref) return null;
-  await conn.query('SELECT id FROM appointments WHERE id = ? FOR UPDATE', [ref.appointment_id]);
-  const [[p]] = await conn.query('SELECT id, status FROM payments WHERE provider_order_id = ? FOR UPDATE', [orderId]);
-  if (!p) return null; // the order was replaced between the read and the lock
-  if (p.status === 'paid') return { alreadyPaid: true, appointmentId: ref.appointment_id };
-  await conn.query("UPDATE payments SET status = 'paid', provider_payment_id = ?, paid_at = NOW() WHERE id = ?", [paymentId, p.id]);
-  await conn.query("UPDATE appointments SET payment_status = 'paid' WHERE id = ?", [ref.appointment_id]);
-  return { alreadyPaid: false, appointmentId: ref.appointment_id };
+  const appointmentId = ref ? ref.appointment_id : fallbackAppointmentId;
+  if (!appointmentId) return null;
+  const [[a]] = await conn.query('SELECT patient_id, doctor_id FROM appointments WHERE id = ? FOR UPDATE', [appointmentId]);
+  if (!a) return null;
+  const [[p]] = await conn.query('SELECT id, status, provider_order_id FROM payments WHERE appointment_id = ? FOR UPDATE', [appointmentId]);
+  if (!p) return null;
+  const [[d]] = await conn.query('SELECT user_id FROM doctors WHERE id = ?', [a.doctor_id]);
+  const info = { appointmentId, patientId: a.patient_id, doctorUserId: d ? d.user_id : null };
+  if (p.status === 'paid') {
+    if (p.provider_order_id !== orderId) console.error(`[payments] RECONCILE: capture ${paymentId} on order ${orderId} for appointment ${appointmentId}, which is already paid via order ${p.provider_order_id}. Possible double charge, refund manually.`);
+    return { ...info, alreadyPaid: true, transitioned: false };
+  }
+  if (p.provider_order_id !== orderId) {
+    console.error(`[payments] RECONCILE: capture ${paymentId} on replaced order ${orderId} (stored ${p.provider_order_id}) marked appointment ${appointmentId} paid. Check the amount.`);
+  }
+  // The captured order becomes the stored one so the row matches what Razorpay charged.
+  await conn.query("UPDATE payments SET status = 'paid', provider_order_id = ?, provider_payment_id = ?, paid_at = NOW() WHERE id = ?", [orderId, paymentId, p.id]);
+  await conn.query("UPDATE appointments SET payment_status = 'paid' WHERE id = ?", [appointmentId]);
+  return { ...info, alreadyPaid: false, transitioned: true };
+}
+
+// After commit, by whichever path performed the unpaid -> paid transition.
+async function notifyPaid(r) {
+  if (!r || !r.transitioned) return;
+  const payload = { type: 'payment', title: 'Payment received' };
+  await notifyUsers([r.patientId], { ...payload, message: `Your payment for appointment #${r.appointmentId} was successful.`, link: '/patient/history' });
+  await notifyUsers([r.doctorUserId], { ...payload, message: `Payment received for appointment #${r.appointmentId}.`, link: '/doctor/appointments' });
 }
 
 // POST /api/payments/verify
@@ -97,26 +122,18 @@ const verifyPayment = async (req, res, next) => {
   try {
     const { orderId, paymentId, signature } = req.body;
     const result = await inTransaction(async (conn) => {
-      const [[own]] = await conn.query(
-        `SELECT d.user_id AS doctor_user_id FROM payments p
-         JOIN appointments a ON a.id = p.appointment_id
-         JOIN doctors d ON d.id = a.doctor_id
-         WHERE p.provider_order_id = ? AND p.patient_id = ?`,
-        [orderId, req.user.id]
-      );
+      const [[own]] = await conn.query('SELECT provider FROM payments WHERE provider_order_id = ? AND patient_id = ?', [orderId, req.user.id]);
       if (!own) throw new NotFoundError('Payment not found.');
+      // A row made in another mode (e.g. mock before keys were set) must not be verified with this mode's secret.
+      if (own.provider !== gateway.getMode()) throw new ValidationError('This payment was created in a different payment mode.');
       // A bad signature changes nothing (the payment is not marked failed).
       if (!gateway.verifyCheckoutSignature(orderId, paymentId, signature)) throw new ValidationError('Invalid payment signature.');
       const r = await markPaid(conn, orderId, paymentId);
       if (!r) throw new NotFoundError('Payment not found.');
-      return { ...r, doctorUserId: own.doctor_user_id };
+      return r;
     });
 
-    if (!result.alreadyPaid) {
-      const payload = { type: 'payment', title: 'Payment received' };
-      await notifyUsers([req.user.id], { ...payload, message: `Your payment for appointment #${result.appointmentId} was successful.`, link: '/patient/history' });
-      await notifyUsers([result.doctorUserId], { ...payload, message: `Payment received for appointment #${result.appointmentId}.`, link: '/doctor/appointments' });
-    }
+    await notifyPaid(result);
     res.json({ success: true, data: { alreadyPaid: result.alreadyPaid, appointmentId: result.appointmentId } });
   } catch (err) { next(err); }
 };
@@ -134,6 +151,9 @@ const webhook = async (req, res, next) => {
     const type = typeof event?.event === 'string' ? event.event.slice(0, 60) : 'unknown';
     const payment = event?.payload?.payment?.entity;
     const orderId = payment?.order_id || event?.payload?.order?.entity?.id;
+    // Set by createOrder. Trusted because the body is HMAC-verified.
+    const noteApptId = Number(payment?.notes?.appointmentId ?? event?.payload?.order?.entity?.notes?.appointmentId);
+    const fallbackAppointmentId = Number.isInteger(noteApptId) && noteApptId > 0 ? noteApptId : null;
 
     const result = await inTransaction(async (conn) => {
       try {
@@ -143,8 +163,9 @@ const webhook = async (req, res, next) => {
         throw err;
       }
       if ((type === 'payment.captured' || type === 'order.paid') && typeof orderId === 'string' && typeof payment?.id === 'string') {
-        await markPaid(conn, orderId, payment.id);
-        return { received: true };
+        const r = await markPaid(conn, orderId, payment.id, fallbackAppointmentId);
+        if (!r) console.error(`[payments] RECONCILE: capture ${payment.id} on unknown order ${orderId} (appointment ${fallbackAppointmentId}) could not be matched. Payment taken but not recorded.`);
+        return { received: true, paid: r };
       }
       if (type === 'payment.failed' && typeof orderId === 'string') {
         await conn.query("UPDATE payments SET status = 'failed' WHERE provider_order_id = ? AND status <> 'paid'", [orderId]);
@@ -152,7 +173,9 @@ const webhook = async (req, res, next) => {
       }
       return { ignored: true };
     });
-    res.json({ success: true, data: result });
+    const { paid, ...data } = result;
+    await notifyPaid(paid);
+    res.json({ success: true, data });
   } catch (err) { next(err); }
 };
 

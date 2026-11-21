@@ -1,11 +1,11 @@
 const crypto = require('crypto');
 const gw = require('../../services/paymentGateway');
 
-const KEYS = ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET', 'NODE_ENV'];
+const KEYS = ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET', 'PAYMENT_MODE', 'NODE_ENV'];
 let saved;
 beforeEach(() => {
   saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
-  for (const k of KEYS.slice(0, 3)) delete process.env[k];
+  for (const k of KEYS.slice(0, 4)) delete process.env[k];
   process.env.NODE_ENV = 'test';
 });
 afterEach(() => {
@@ -16,12 +16,20 @@ afterEach(() => {
 const hmac = (secret, data) => crypto.createHmac('sha256', secret).update(data).digest('hex');
 
 describe('getMode', () => {
-  test('mock without keys outside production, null in production, razorpay with both keys', () => {
+  test('mock without keys only in development/test or with PAYMENT_MODE=mock, razorpay with both keys', () => {
+    expect(gw.getMode()).toBe('mock');
+    process.env.NODE_ENV = 'development';
     expect(gw.getMode()).toBe('mock');
     process.env.RAZORPAY_KEY_ID = 'rzp_test_x';
     expect(gw.getMode()).toBe('mock'); // only one key set
     process.env.NODE_ENV = 'production';
     expect(gw.getMode()).toBeNull();
+    process.env.NODE_ENV = 'staging';
+    expect(gw.getMode()).toBeNull();
+    delete process.env.NODE_ENV;
+    expect(gw.getMode()).toBeNull();
+    process.env.PAYMENT_MODE = 'mock';
+    expect(gw.getMode()).toBe('mock');
     process.env.RAZORPAY_KEY_SECRET = 's3cret';
     expect(gw.getMode()).toBe('razorpay');
   });
@@ -79,11 +87,16 @@ describe('createOrder', () => {
     expect((await gw.createOrder({ amountPaise: 50000, receipt: 'appt_1', notes: { a: '1' } })).id).toBe('order_R1');
     const [url, opts] = fetchSpy.mock.calls[0];
     expect(url).toBe('https://api.razorpay.com/v1/orders');
+    expect(opts.signal).toBeInstanceOf(AbortSignal);
     expect(opts.headers.Authorization).toBe(`Basic ${Buffer.from('kid:ksec').toString('base64')}`);
     expect(JSON.parse(opts.body)).toEqual({ amount: 50000, currency: 'INR', receipt: 'appt_1', notes: { a: '1' } });
 
     fetchSpy.mockResolvedValueOnce({ ok: false, status: 401 });
     await expect(gw.createOrder({ amountPaise: 1, receipt: 'r' })).rejects.toMatchObject({ statusCode: 502, code: 'PAYMENT_GATEWAY_ERROR' });
+    fetchSpy.mockResolvedValueOnce({ ok: true, json: async () => ({ error: 'x' }) });
+    await expect(gw.createOrder({ amountPaise: 1, receipt: 'r' })).rejects.toMatchObject({ statusCode: 502 });
+    fetchSpy.mockRejectedValueOnce(new DOMException('timed out', 'TimeoutError'));
+    await expect(gw.createOrder({ amountPaise: 1, receipt: 'r' })).rejects.toMatchObject({ statusCode: 502 });
   });
 
   test('not configured in production -> 503', async () => {
