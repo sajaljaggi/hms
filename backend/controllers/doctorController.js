@@ -16,7 +16,7 @@ const getAppointments = async (req, res, next) => {
 
     let sql = `
       SELECT
-        a.id, a.status, a.created_at,
+        a.id, a.status, a.payment_status, a.created_at,
         ds.date, ds.time,
         u.id   AS patient_id,
         u.name AS patient_name,

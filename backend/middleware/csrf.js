@@ -32,8 +32,12 @@ const issueCsrfToken = (req, res, next) => {
   next();
 };
 
+// Server-to-server, carries no cookies, and is authenticated by its HMAC signature instead.
+const CSRF_EXEMPT_PATH = '/api/payments/webhook';
+
 const verifyCsrf = (req, res, next) => {
   if (!UNSAFE_METHODS.has(req.method)) return next();
+  if (req.method === 'POST' && req.path === CSRF_EXEMPT_PATH) return next();
 
   const cookieToken  = req.cookies?.[CSRF_COOKIE];
   const headerToken  = req.headers[CSRF_HEADER];

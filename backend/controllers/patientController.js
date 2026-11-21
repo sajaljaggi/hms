@@ -46,7 +46,7 @@ const getAppointments = async (req, res, next) => {
   try {
     const [rows] = await db.query(
       `SELECT
-         a.id, a.status, a.created_at,
+         a.id, a.status, a.payment_status, a.created_at,
          ds.date, ds.time,
          u.name  AS doctor_name,
          d.specialization, d.fees,
