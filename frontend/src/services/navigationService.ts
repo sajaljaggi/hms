@@ -14,11 +14,11 @@ export const navigationService = {
     api.post<{ success: true; data: { id: number } }>('/navigation/locations', body),
 
   deleteLocation: (id: number) =>
-    api.delete<{ success: true; data: { id: string } }>(`/navigation/locations/${id}`),
+    api.delete<{ success: true; data: { id: number } }>(`/navigation/locations/${id}`),
 
   createEdge: (body: CreateNavEdgeBody) =>
     api.post<{ success: true; data: { id: number } }>('/navigation/edges', body),
 
   deleteEdge: (id: number) =>
-    api.delete<{ success: true; data: { id: string } }>(`/navigation/edges/${id}`),
+    api.delete<{ success: true; data: { id: number } }>(`/navigation/edges/${id}`),
 };

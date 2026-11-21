@@ -231,7 +231,7 @@ export default function History() {
                   </span>
                 </div>
                 <span className="text-sm font-bold text-teal-700">₹{appt.fees}</span>
-                {appt.payment_status === 'unpaid' && appt.status !== 'cancelled' && (
+                {appt.payment_status === 'unpaid' && appt.status === 'pending' && (
                   <button onClick={() => pay(appt.id)} disabled={busyId !== null}
                     className="text-xs font-medium bg-teal-600 text-white px-3 py-1.5 rounded-md hover:bg-teal-700 disabled:opacity-60">
                     {busyId === appt.id ? 'Processing…' : `Pay ₹${appt.fees}`}

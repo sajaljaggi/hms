@@ -5,7 +5,7 @@ import { bedService } from '../../services/bedService';
 import { patientService } from '../../services/patientService';
 import PatientPicker from '../../components/PatientPicker';
 import { getErrorMessage } from '../../utils/getErrorMessage';
-import { canTransition, suggestEsiLevel } from '../../utils/triage';
+import { canAdmit, canTransition, suggestEsiLevel } from '../../utils/triage';
 import type {
   ArrivalMode, Bed, CreateEmergencyCaseBody, EmergencyCase, EmergencyStats, EmergencyStatus, Gender, PatientSearchResult, TriageLevel,
 } from '../../types/modules';
@@ -242,7 +242,7 @@ export default function EmergencyBoard() {
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap gap-1.5">
                         {canTransition(c.status, 'in_treatment') && <button type="button" disabled={busy} className={`${btn} bg-teal-600 text-white`} onClick={() => setStatus(c, 'in_treatment')}>Start treatment</button>}
-                        {canTransition(c.status, 'admitted') && <button type="button" disabled={busy} className={`${btn} bg-blue-600 text-white`} onClick={() => openAdmit(c)}>Admit</button>}
+                        {canAdmit(c.status) && <button type="button" disabled={busy} className={`${btn} bg-blue-600 text-white`} onClick={() => openAdmit(c)}>Admit</button>}
                         {canTransition(c.status, 'discharged') && <button type="button" disabled={busy} className={`${btn} border border-gray-300`} onClick={() => setStatus(c, 'discharged')}>Discharge</button>}
                         {canTransition(c.status, 'transferred') && <button type="button" disabled={busy} className={`${btn} border border-gray-300`} onClick={() => setStatus(c, 'transferred')}>Transfer</button>}
                       </div>

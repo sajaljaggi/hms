@@ -30,4 +30,7 @@ export const ALLOWED_TRANSITIONS: Record<EmergencyStatus, EmergencyStatus[]> = {
   transferred: [],
 };
 
+// Admission goes through POST /admit (not the PATCH status flow), which accepts any open case.
+export const canAdmit = (status: EmergencyStatus) => status === 'waiting' || status === 'in_treatment';
+
 export const canTransition = (from: EmergencyStatus, to: EmergencyStatus) => (ALLOWED_TRANSITIONS[from] ?? []).includes(to);

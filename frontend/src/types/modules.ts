@@ -78,7 +78,7 @@ export interface BloodDonor {
 }
 export interface BloodUnit {
   id: number;
-  donor_id: number;
+  donor_id: number | null;
   blood_group: BloodGroup;
   component: BloodComponent;
   volume_ml: number;

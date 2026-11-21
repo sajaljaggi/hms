@@ -22,13 +22,14 @@ const appt = (id: number, over: object) => ({
 beforeEach(() => { vi.resetAllMocks(); });
 
 describe('History', () => {
-  it('shows Pay only for unpaid non-cancelled and Join only for paid video pending', async () => {
+  it('shows Pay only for unpaid pending and Join only for paid video pending', async () => {
     vi.mocked(patientService.getAppointments).mockResolvedValue({ data: { data: [
       appt(1, {}),
       appt(2, { status: 'cancelled' }),
       appt(3, { payment_status: 'paid', consultation_type: 'video' }),
       appt(4, { payment_status: 'paid', consultation_type: 'video', status: 'completed' }),
       appt(5, { consultation_type: 'video' }),
+      appt(6, { status: 'completed' }), // historical unpaid visit: not payable
     ] } } as never);
     render(<MemoryRouter><History /></MemoryRouter>);
     await screen.findByText('Dr 1');
@@ -106,5 +107,21 @@ describe('BookAppointment', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Video' }));
     await userEvent.click(screen.getByRole('button', { name: 'Confirm Booking' }));
     expect(patientService.bookAppointment).toHaveBeenCalledWith(9, 3, '', 'video');
+  });
+
+  it('shows the server error when video booking is rejected (payments not configured)', async () => {
+    vi.mocked(patientService.getDoctors).mockResolvedValue({ data: { data: [{ id: 9, name: 'Dr Nine', fees: 400, specialization: 'Cardiology' }] } } as never);
+    vi.mocked(patientService.getAvailableSlots).mockResolvedValue({ data: { data: [{ id: 3, time: '10:00:00', is_booked: 0, is_available: 1 }] } } as never);
+    const msg = 'Video consultations are unavailable because online payment is not configured. Please book an in-person visit.';
+    vi.mocked(patientService.bookAppointment).mockRejectedValue({ response: { status: 400, data: { message: msg } } });
+    render(<BookAppointment />);
+    await userEvent.click(screen.getByText('Cardiology'));
+    const dayButtons = screen.getAllByRole('button').filter(b => /^[A-Z][a-z]{2}\d{2}[A-Z][a-z]{2}$/.test(b.textContent ?? ''));
+    await userEvent.click(dayButtons[1]);
+    await userEvent.click(await screen.findByText('Dr Nine'));
+    await userEvent.click(await screen.findByText(/10:00 AM/));
+    await userEvent.click(screen.getByRole('button', { name: 'Video' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm Booking' }));
+    expect(await screen.findByText(msg)).toBeInTheDocument();
   });
 });

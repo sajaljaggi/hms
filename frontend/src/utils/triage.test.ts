@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { suggestEsiLevel, canTransition } from './triage';
+import { suggestEsiLevel, canTransition, canAdmit } from './triage';
 
 describe('suggestEsiLevel', () => {
   it('level 1 for immediate intervention, even when high risk', () => {
@@ -32,5 +32,15 @@ describe('canTransition', () => {
     expect(canTransition('waiting', 'admitted')).toBe(false);
     expect(canTransition('in_treatment', 'admitted')).toBe(true);
     expect(canTransition('admitted', 'discharged')).toBe(false);
+  });
+});
+
+describe('canAdmit', () => {
+  it('matches backend /admit: open cases only', () => {
+    expect(canAdmit('waiting')).toBe(true);
+    expect(canAdmit('in_treatment')).toBe(true);
+    expect(canAdmit('admitted')).toBe(false);
+    expect(canAdmit('discharged')).toBe(false);
+    expect(canAdmit('transferred')).toBe(false);
   });
 });

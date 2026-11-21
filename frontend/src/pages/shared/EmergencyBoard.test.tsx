@@ -32,12 +32,12 @@ beforeEach(() => {
 });
 
 describe('EmergencyBoard', () => {
-  it('shows stats and renders only valid transition buttons per status', async () => {
+  it('shows stats, valid transition buttons per status, and Admit for any open case', async () => {
     render(<EmergencyBoard />);
     const waiting = await screen.findByTestId('case-1');
     expect(screen.getByText('12 min', { selector: 'p' })).toBeInTheDocument();
     expect(within(waiting).getByRole('button', { name: 'Start treatment' })).toBeInTheDocument();
-    expect(within(waiting).queryByRole('button', { name: 'Admit' })).not.toBeInTheDocument();
+    expect(within(waiting).getByRole('button', { name: 'Admit' })).toBeInTheDocument();
     expect(within(waiting).getByRole('button', { name: 'Discharge' })).toBeInTheDocument();
     expect(within(waiting).getByRole('button', { name: 'Transfer' })).toBeInTheDocument();
 
