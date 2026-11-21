@@ -194,6 +194,10 @@ Seed sample doctors/slots: `node backend/seedData.js` (schema.sql already includ
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | Redis connection (optional locally) |
 | `GEMINI_API_KEY` | Google Gemini API key for the chatbot |
 | `NODE_ENV` | `production` flips cookies to `Secure; SameSite=None` for cross-site deployment |
+| `TZ` | Must be `Asia/Kolkata`. Slot `date` + `time` columns are IST wall-clock values and are parsed in the Node process timezone, so a UTC host (Render's default) would shift the teleconsult join window and the "slot has passed" check by 5.5 h. Set in `render.yaml`, `docker-compose.yml` and `backend/Dockerfile` (which installs `tzdata`) |
+| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | Razorpay API key pair. With both empty, payments run in mock mode only under `NODE_ENV=development`/`test` or `PAYMENT_MODE=mock`. Otherwise online payment is off: `/api/payments/orders` returns 503 and **video appointments are rejected at booking (400)**, since a video room can only be joined once paid |
+| `RAZORPAY_WEBHOOK_SECRET` | The secret configured on the Razorpay webhook (not the key secret), used to verify `/api/payments/webhook` |
+| `JITSI_DOMAIN` | Jitsi server for video rooms (default `meet.jit.si`). meet.jit.si restricts IFrame embedding for third-party sites, so production should use JaaS (`8x8.vc`) or a self-hosted Jitsi domain |
 
 **`frontend/.env.example`** — one variable, `VITE_BACKEND_URL`, left **unset** in every environment that can proxy `/api` itself (local dev, docker-compose, Vercel). Only needed if deploying the frontend somewhere without a same-origin proxy option — see the [Architecture](#architecture) note on why that's a fallback, not the preferred path.
 
@@ -254,6 +258,7 @@ Aiven's free tier auto-powers-off after ~24h with no *database query* activity (
 - **Redis**: Render's managed Redis add-on, same account/region as the backend for low latency.
 - Both auto-deploy on every push to `main`.
 - Render's free web services have no persistent disk and no Shell access — see [Known Limitations](#known-limitations).
+- `render.yaml` sets `TZ=Asia/Kolkata` and prompts for `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` and `JITSI_DOMAIN` at import. Until the Razorpay keys are set, payments are disabled and video appointments cannot be booked (see [Environment Variables](#environment-variables)).
 
 ### 3. Frontend — [Vercel](https://vercel.com)
 Static Vite build, deployed from the `frontend/` directory. `frontend/vercel.json` rewrites `/api/*` and `/uploads/*` to the Render backend's URL server-side, which is what makes the auth cookies first-party (see the [Architecture](#architecture) section — this was the fix for a real bug where Chrome was silently discarding the backend's cookies as third-party). `VITE_BACKEND_URL` must stay **unset** in Vercel's project settings for this proxy to actually be used; setting it makes the frontend call Render directly, cross-origin, reintroducing the cookie problem.

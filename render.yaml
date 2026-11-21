@@ -61,6 +61,16 @@ services:
         sync: false # set to your Vercel frontend URL, e.g. https://your-app.vercel.app
       - key: GEMINI_API_KEY
         sync: false
+      - key: TZ
+        value: Asia/Kolkata # slot DATE+TIME columns are IST wall-clock times, so the process must run in IST
+      - key: RAZORPAY_KEY_ID
+        sync: false # without the key pair, payments return 503 and video appointments cannot be booked
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: JITSI_DOMAIN
+        sync: false # meet.jit.si blocks IFrame embedding: use JaaS (8x8.vc) or a self-hosted Jitsi domain
       - key: REDIS_HOST
         fromService:
           type: redis
