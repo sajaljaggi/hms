@@ -10,6 +10,7 @@ let seq = 0;
 function csrfFrom(res) {
   const setCookie = res.headers['set-cookie'] || [];
   const csrfCookie = setCookie.find((c) => c.startsWith('csrf_token='));
+  if (!csrfCookie) throw new Error('csrfFrom: response has no csrf_token cookie');
   const cookie = csrfCookie.split(';')[0];
   return { cookie, header: cookie.split('=')[1] };
 }

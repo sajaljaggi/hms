@@ -4,9 +4,7 @@ const { NotFoundError } = require('../utils/errors');
 // GET /api/notifications?unreadOnly=&limit=
 const listNotifications = async (req, res, next) => {
   try {
-    // Express 5 makes req.query read-only, so validated coercions never land on it: parse here.
-    const unreadOnly = req.query.unreadOnly === 'true';
-    const limit = Number(req.query.limit) || 20;
+    const { unreadOnly, limit } = req.query;
     const [rows] = await db.query(
       `SELECT id, type, title, message, link, is_read, created_at
        FROM notifications

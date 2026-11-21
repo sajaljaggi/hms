@@ -9,7 +9,12 @@ const validate = (schema, source = 'body') => (req, res, next) => {
   if (!result.success) {
     return next(result.error);
   }
-  req[source] = result.data;
+  if (source === 'query') {
+    // Express 5 makes req.query a getter-only property, so plain assignment is silently ignored.
+    Object.defineProperty(req, 'query', { value: result.data, writable: true, configurable: true, enumerable: true });
+  } else {
+    req[source] = result.data;
+  }
   next();
 };
 

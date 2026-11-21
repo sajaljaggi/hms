@@ -15,7 +15,7 @@ describe('notificationController', () => {
 
   test('listNotifications returns rows and unreadCount scoped to the user', async () => {
     db.query.mockResolvedValueOnce([[{ id: 1 }]]).mockResolvedValueOnce([[{ unreadCount: 4 }]]);
-    const { req, res, next } = mk({ query: { unreadOnly: 'true', limit: '7' } });
+    const { req, res, next } = mk({ query: { unreadOnly: true, limit: 7 } });
     await listNotifications(req, res, next);
     expect(db.query.mock.calls[0][0]).toContain('is_read = 0');
     expect(db.query.mock.calls[0][1]).toEqual([5, 7]);
