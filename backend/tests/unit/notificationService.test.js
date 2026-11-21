@@ -1,7 +1,7 @@
 jest.mock('../../config/db', () => ({ query: jest.fn() }));
 
 const db = require('../../config/db');
-const { notifyUsers, notifyRoles } = require('../../services/notificationService');
+const { notifyUsers, notifyRoles, notifyBooking } = require('../../services/notificationService');
 
 const payload = { type: 'system', title: 'T', message: 'M', link: '/x' };
 
@@ -49,6 +49,22 @@ describe('notificationService', () => {
     expect(db.query).not.toHaveBeenCalled();
     db.query.mockRejectedValue(new Error('boom'));
     expect(await notifyRoles(['admin'], payload)).toBe(0);
+    expect(errSpy).toHaveBeenCalled();
+  });
+
+  test('notifyBooking notifies the patient and the doctor user', async () => {
+    db.query
+      .mockResolvedValueOnce([[{ user_id: 77 }]]) // doctor lookup
+      .mockResolvedValue([{ affectedRows: 1 }]);
+    await notifyBooking({ patientId: 42, doctorId: 5, dateStr: '2026-12-01', time: '09:30:00', isVideo: true });
+    expect(db.query).toHaveBeenCalledTimes(3);
+    expect(db.query.mock.calls[1][1][0]).toEqual([[42, 'appointment', 'Appointment booked', 'Your video appointment on 2026-12-01 09:30 was booked.', '/patient/history']]);
+    expect(db.query.mock.calls[2][1][0]).toEqual([[77, 'appointment', 'New appointment', 'A patient booked a video appointment on 2026-12-01 09:30.', '/doctor/appointments']]);
+  });
+
+  test('notifyBooking never throws when the doctor lookup fails', async () => {
+    db.query.mockRejectedValue(new Error('boom'));
+    await expect(notifyBooking({ patientId: 1, doctorId: 2, dateStr: '2026-12-01', time: '09:00:00' })).resolves.toBeUndefined();
     expect(errSpy).toHaveBeenCalled();
   });
 });

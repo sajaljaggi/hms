@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { escapeLike } = require('../utils/sql');
 const { NotFoundError } = require('../utils/errors');
 const { buildGraph, shortestPath } = require('../utils/pathfinding');
 
@@ -11,7 +12,7 @@ const listLocations = async (req, res, next) => {
     const where = [];
     const params = [];
     if (category) { where.push('category = ?'); params.push(category); }
-    if (q) { where.push('name LIKE ?'); params.push(`%${q.replace(/[\\%_]/g, '\\$&')}%`); }
+    if (q) { where.push('name LIKE ?'); params.push(`%${escapeLike(q)}%`); }
     const [rows] = await db.query(
       `SELECT * FROM nav_locations ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY floor, name`,
       params
@@ -71,7 +72,7 @@ const deleteById = (table, label) => async (req, res, next) => {
   try {
     const [r] = await db.query(`DELETE FROM ${table} WHERE id = ?`, [req.params.id]);
     if (r.affectedRows === 0) throw new NotFoundError(`${label} not found.`);
-    res.json({ success: true, data: { id: req.params.id } });
+    res.json({ success: true, data: { id: Number(req.params.id) } });
   } catch (err) { next(err); }
 };
 

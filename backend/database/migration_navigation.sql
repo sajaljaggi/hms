@@ -24,27 +24,30 @@ CREATE TABLE IF NOT EXISTS nav_edges (
   FOREIGN KEY (to_location_id) REFERENCES nav_locations(id) ON DELETE CASCADE
 );
 
-INSERT IGNORE INTO nav_locations (code, name, category, floor, description) VALUES
-('MAIN_ENTRANCE', 'Main Entrance', 'entrance', 0, 'Main hospital entrance'),
-('RECEPTION', 'Reception', 'reception', 0, 'Registration and enquiries'),
-('EMERGENCY', 'Emergency Department', 'department', 0, 'Emergency care, open 24 hours'),
-('PHARMACY', 'Pharmacy', 'facility', 0, 'In-house pharmacy'),
-('RADIOLOGY', 'Radiology', 'department', 0, 'X-ray, CT and ultrasound'),
-('LIFT_G', 'Lift (Ground)', 'elevator', 0, 'Lift lobby, ground floor'),
-('STAIRS_G', 'Stairs (Ground)', 'stairs', 0, 'Staircase, ground floor'),
-('JUNCTION_G', 'Ground Floor Junction', 'junction', 0, 'Central corridor junction'),
-('LIFT_1', 'Lift (Floor 1)', 'elevator', 1, 'Lift lobby, first floor'),
-('STAIRS_1', 'Stairs (Floor 1)', 'stairs', 1, 'Staircase, first floor'),
-('GENERAL_MEDICINE', 'General Medicine', 'department', 1, 'General medicine outpatient clinic'),
-('CARDIOLOGY', 'Cardiology', 'department', 1, 'Heart care clinic'),
-('ORTHOPEDICS', 'Orthopedics', 'department', 1, 'Bone and joint clinic'),
-('GENERAL_WARD_A', 'General Ward A', 'ward', 1, 'General inpatient ward'),
-('BLOOD_BANK', 'Blood Bank', 'facility', 1, 'Blood donation and issue'),
-('LIFT_2', 'Lift (Floor 2)', 'elevator', 2, 'Lift lobby, second floor'),
-('STAIRS_2', 'Stairs (Floor 2)', 'stairs', 2, 'Staircase, second floor'),
-('NEUROLOGY', 'Neurology', 'department', 2, 'Brain and nerve clinic'),
-('DERMATOLOGY', 'Dermatology', 'department', 2, 'Skin clinic'),
-('ICU', 'Intensive Care Unit', 'ward', 2, 'Intensive care, restricted access');
+-- Seeds run only while the table is empty, so rows an admin deletes stay deleted on later boots.
+INSERT IGNORE INTO nav_locations (code, name, category, floor, description)
+SELECT v.code, v.name, v.category, v.floor, v.description FROM (
+  SELECT 'MAIN_ENTRANCE' code, 'Main Entrance' name, 'entrance' category, 0 floor, 'Main hospital entrance' description
+  UNION ALL SELECT 'RECEPTION', 'Reception', 'reception', 0, 'Registration and enquiries'
+  UNION ALL SELECT 'EMERGENCY', 'Emergency Department', 'department', 0, 'Emergency care, open 24 hours'
+  UNION ALL SELECT 'PHARMACY', 'Pharmacy', 'facility', 0, 'In-house pharmacy'
+  UNION ALL SELECT 'RADIOLOGY', 'Radiology', 'department', 0, 'X-ray, CT and ultrasound'
+  UNION ALL SELECT 'LIFT_G', 'Lift (Ground)', 'elevator', 0, 'Lift lobby, ground floor'
+  UNION ALL SELECT 'STAIRS_G', 'Stairs (Ground)', 'stairs', 0, 'Staircase, ground floor'
+  UNION ALL SELECT 'JUNCTION_G', 'Ground Floor Junction', 'junction', 0, 'Central corridor junction'
+  UNION ALL SELECT 'LIFT_1', 'Lift (Floor 1)', 'elevator', 1, 'Lift lobby, first floor'
+  UNION ALL SELECT 'STAIRS_1', 'Stairs (Floor 1)', 'stairs', 1, 'Staircase, first floor'
+  UNION ALL SELECT 'GENERAL_MEDICINE', 'General Medicine', 'department', 1, 'General medicine outpatient clinic'
+  UNION ALL SELECT 'CARDIOLOGY', 'Cardiology', 'department', 1, 'Heart care clinic'
+  UNION ALL SELECT 'ORTHOPEDICS', 'Orthopedics', 'department', 1, 'Bone and joint clinic'
+  UNION ALL SELECT 'GENERAL_WARD_A', 'General Ward A', 'ward', 1, 'General inpatient ward'
+  UNION ALL SELECT 'BLOOD_BANK', 'Blood Bank', 'facility', 1, 'Blood donation and issue'
+  UNION ALL SELECT 'LIFT_2', 'Lift (Floor 2)', 'elevator', 2, 'Lift lobby, second floor'
+  UNION ALL SELECT 'STAIRS_2', 'Stairs (Floor 2)', 'stairs', 2, 'Staircase, second floor'
+  UNION ALL SELECT 'NEUROLOGY', 'Neurology', 'department', 2, 'Brain and nerve clinic'
+  UNION ALL SELECT 'DERMATOLOGY', 'Dermatology', 'department', 2, 'Skin clinic'
+  UNION ALL SELECT 'ICU', 'Intensive Care Unit', 'ward', 2, 'Intensive care, restricted access'
+) v JOIN (SELECT COUNT(*) c FROM nav_locations) x ON x.c = 0;
 
 INSERT IGNORE INTO nav_edges (from_location_id, to_location_id, distance_m, instruction, reverse_instruction, `accessible`)
 SELECT a.id, b.id, e.d, e.i, e.r, e.acc FROM (
@@ -72,4 +75,5 @@ SELECT a.id, b.id, e.d, e.i, e.r, e.acc FROM (
   UNION ALL SELECT 'LIFT_2', 'STAIRS_2', 20, 'Walk along the corridor to the staircase', 'Walk along the corridor to the lift lobby', 1
   UNION ALL SELECT 'STAIRS_2', 'NEUROLOGY', 12, 'Leave the stairs and walk to Neurology', 'Walk back to the staircase', 1
   UNION ALL SELECT 'STAIRS_2', 'DERMATOLOGY', 10, 'Leave the stairs and turn right to Dermatology', 'Walk back to the staircase', 1
-) e JOIN nav_locations a ON a.code = e.f JOIN nav_locations b ON b.code = e.t;
+) e JOIN nav_locations a ON a.code = e.f JOIN nav_locations b ON b.code = e.t
+JOIN (SELECT COUNT(*) c FROM nav_edges) x ON x.c = 0;

@@ -25,10 +25,11 @@ test('gives up after 2 retries (3 attempts) and rethrows', async () => {
   expect(fn).toHaveBeenCalledTimes(3);
 });
 
-test('lock wait timeout is retried too', async () => {
+test('lock wait timeout is not retried', async () => {
   db.getConnection.mockImplementation(async () => mkConn());
   const fn = jest.fn().mockRejectedValueOnce(Object.assign(new Error('t'), { code: 'ER_LOCK_WAIT_TIMEOUT' })).mockResolvedValueOnce(1);
-  await expect(inTransaction(fn)).resolves.toBe(1);
+  await expect(inTransaction(fn)).rejects.toMatchObject({ code: 'ER_LOCK_WAIT_TIMEOUT' });
+  expect(fn).toHaveBeenCalledTimes(1);
 });
 
 test('other errors are not retried; rollback failure does not mask the original', async () => {

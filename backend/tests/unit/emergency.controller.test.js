@@ -43,6 +43,15 @@ describe('updateCase', () => {
     expect(res.json).toHaveBeenCalledWith({ success: true });
   });
 
+  test.each(['admitted', 'discharged', 'transferred'])('closed case (%s): any edit -> 409, nothing written', async (closed) => {
+    const c = conn();
+    c.query.mockResolvedValueOnce([[{ status: closed }]]);
+    const { next } = await run(updateCase, { triageLevel: 1, assignedDoctorId: 3 }, c);
+    expect(next.mock.calls[0][0].statusCode).toBe(409);
+    expect(c.query).toHaveBeenCalledTimes(1);
+    expect(notifyUsers).not.toHaveBeenCalled();
+  });
+
   test('unknown doctor -> 404', async () => {
     const c = conn();
     c.query.mockResolvedValueOnce([[{ status: 'waiting' }]]).mockResolvedValueOnce([[]]);

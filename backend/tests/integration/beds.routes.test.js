@@ -95,4 +95,13 @@ describe('beds routes', () => {
     expect(Object.keys(ok.body.data[0]).sort()).toEqual(['email', 'id', 'name', 'phone']);
     expect((await authed(request(app).get, '/api/beds/patients/search?q=a', doctor)).status).toBe(400);
   });
+
+  test('admin cannot delete a patient with an open bed allocation (409), other patients delete fine', async () => {
+    const res = await authed(request(app).delete, `/api/admin/user/${p1.userId}`, admin);
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe('Discharge the patient from their bed first.');
+    const [[u]] = await db.query('SELECT COUNT(*) AS c FROM users WHERE id = ?', [p1.userId]);
+    expect(u.c).toBe(1);
+    expect((await authed(request(app).delete, `/api/admin/user/${p2.userId}`, admin)).status).toBe(200);
+  });
 });

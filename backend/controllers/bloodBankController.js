@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { escapeLike } = require('../utils/sql');
 const { NotFoundError } = require('../utils/errors');
 const { inTransaction } = require('../utils/transaction');
 const svc = require('../services/bloodBankService');
@@ -37,7 +38,7 @@ const listDonors = async (req, res, next) => {
     const params = [];
     if (bloodGroup) { where.push('blood_group = ?'); params.push(bloodGroup); }
     if (q) {
-      const like = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
+      const like = `%${escapeLike(q)}%`;
       where.push('(name LIKE ? OR phone LIKE ?)');
       params.push(like, like);
     }

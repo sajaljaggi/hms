@@ -1,10 +1,11 @@
 const crypto = require('crypto');
 const db = require('../config/db');
 const { generateSlotsForDoctorDate } = require('../utils/generateSlots');
-const { NotFoundError, ConflictError, ValidationError } = require('../utils/errors');
+const { AppError, NotFoundError, ConflictError, ValidationError } = require('../utils/errors');
 const { getCache, setCache, invalidateCache, availabilityKey } = require('../utils/cache');
 const { toDateStr } = require('../utils/dates');
-const { notifyUsers } = require('../services/notificationService');
+const { notifyBooking } = require('../services/notificationService');
+const paymentGateway = require('../services/paymentGateway');
 
 // ─── GET /api/doctors?specialization=xxx ───────────────────────────────────
 const getDoctors = async (req, res, next) => {
@@ -70,6 +71,11 @@ const bookAppointment = async (req, res, next) => {
     const isVideo = consultationType === 'video';
     const patientId = req.user.id;
 
+    // A video visit can only be joined once paid, so it is unbookable while payments are off.
+    if (isVideo && !paymentGateway.getMode()) {
+      throw new AppError('Video consultations are unavailable because online payment is not configured. Please book an in-person visit.', 400, 'PAYMENT_NOT_CONFIGURED');
+    }
+
     await conn.beginTransaction();
 
     // Lock the slot row to prevent race conditions (double-booking)
@@ -114,22 +120,7 @@ const bookAppointment = async (req, res, next) => {
     // this slot just flipped from available to booked.
     await invalidateCache(availabilityKey(doctorId, dateStr));
 
-    // Best-effort: a failed lookup or notification must not fail a committed booking.
-    try {
-      const [[doc]] = await db.query('SELECT user_id FROM doctors WHERE id = ?', [doctorId]);
-      const when = `${dateStr} ${String(slotRow.time).slice(0, 5)}`;
-      const kind = isVideo ? 'video ' : '';
-      await notifyUsers([patientId], {
-        type: 'appointment', title: 'Appointment booked',
-        message: `Your ${kind}appointment on ${when} was booked.`, link: '/patient/history',
-      });
-      await notifyUsers([doc && doc.user_id], {
-        type: 'appointment', title: 'New appointment',
-        message: `A patient booked a ${kind}appointment on ${when}.`, link: '/doctor/appointments',
-      });
-    } catch (notifyErr) {
-      console.error('booking notification failed:', notifyErr.message);
-    }
+    await notifyBooking({ patientId, doctorId, dateStr, time: slotRow.time, isVideo });
 
     res.status(201).json({
       success: true,

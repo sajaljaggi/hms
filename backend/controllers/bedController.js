@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { escapeLike } = require('../utils/sql');
 const { NotFoundError, ConflictError } = require('../utils/errors');
 const { allocateBed, dischargeAllocation } = require('../services/bedService');
 const { notifyUsers } = require('../services/notificationService');
@@ -117,7 +118,7 @@ const stats = async (req, res, next) => {
 // GET /api/beds/patients/search?q=
 const searchPatients = async (req, res, next) => {
   try {
-    const like = `%${req.query.q.replace(/[\\%_]/g, '\\$&')}%`;
+    const like = `%${escapeLike(req.query.q)}%`;
     const [rows] = await db.query(
       `SELECT id, name, email, phone FROM users
        WHERE role = 'patient' AND (name LIKE ? OR email LIKE ?)

@@ -71,7 +71,9 @@ describe('navigation routes', () => {
     expect(route.body.data.estimatedMinutes).toBe(1);
     expect((await authed(request(app).post, '/api/navigation/edges', admin).send({ ...edge, toLocationId: edge.fromLocationId })).status).toBe(400);
     expect((await authed(request(app).post, '/api/navigation/edges', admin).send({ ...edge, toLocationId: 999999 })).status).toBe(400);
-    expect((await authed(request(app).delete, `/api/navigation/edges/${e.body.data.id}`, admin)).status).toBe(200);
+    const del = await authed(request(app).delete, `/api/navigation/edges/${e.body.data.id}`, admin);
+    expect(del.status).toBe(200);
+    expect(del.body.data.id).toBe(e.body.data.id);
     expect((await authed(request(app).delete, `/api/navigation/edges/${e.body.data.id}`, admin)).status).toBe(404);
     expect((await authed(request(app).delete, `/api/navigation/locations/${a.body.data.id}`, admin)).status).toBe(200);
     expect((await authed(request(app).delete, `/api/navigation/locations/${a.body.data.id}`, admin)).status).toBe(404);
@@ -81,5 +83,24 @@ describe('navigation routes', () => {
     const res = await authed(request(app).post, '/api/navigation/locations', patient)
       .send({ code: code(), name: 'Nope', category: 'facility', floor: 0 });
     expect(res.status).toBe(403);
+  });
+
+  it('a seeded location an admin deletes stays deleted when migrations re-run on boot', async () => {
+    const { applySchema } = require('../../database/applySchema');
+    const [[loc]] = await db.query("SELECT * FROM nav_locations WHERE code = 'DERMATOLOGY'");
+    const [edges] = await db.query('SELECT * FROM nav_edges WHERE from_location_id = ? OR to_location_id = ?', [loc.id, loc.id]);
+    expect((await authed(request(app).delete, `/api/navigation/locations/${loc.id}`, admin)).status).toBe(200);
+
+    const conn = await db.getConnection();
+    try {
+      await applySchema(conn);
+      const [rows] = await conn.query("SELECT id FROM nav_locations WHERE code = 'DERMATOLOGY'");
+      expect(rows).toEqual([]);
+    } finally {
+      // restore the seed row (same id) and its edges for the other suites
+      await conn.query('INSERT INTO nav_locations SET ?', [loc]);
+      for (const e of edges) await conn.query('INSERT INTO nav_edges SET ?', [e]);
+      conn.release();
+    }
   });
 });

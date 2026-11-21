@@ -51,13 +51,13 @@ const join = async (req, res, next) => {
 const complete = async (req, res, next) => {
   try {
     const patientId = await inTransaction(async (conn) => {
-      const [rows] = await conn.query(
-        `SELECT a.patient_id, a.status, d.user_id AS doctor_user_id
-         FROM appointments a JOIN doctors d ON a.doctor_id = d.id WHERE a.id = ? FOR UPDATE`,
+      // Lock only the appointment row: a JOIN ... FOR UPDATE would also X-lock the doctor row.
+      const [[a]] = await conn.query(
+        'SELECT patient_id, status, doctor_id FROM appointments WHERE id = ? FOR UPDATE',
         [req.params.appointmentId]
       );
-      const a = rows[0];
-      if (!a || a.doctor_user_id !== req.user.id) throw new NotFoundError('Appointment not found.');
+      const [[d]] = a ? await conn.query('SELECT user_id FROM doctors WHERE id = ?', [a.doctor_id]) : [[]];
+      if (!a || !d || d.user_id !== req.user.id) throw new NotFoundError('Appointment not found.');
       if (a.status !== 'pending') throw new ConflictError(`This appointment is already ${a.status}.`);
       await conn.query("UPDATE appointments SET status = 'completed' WHERE id = ?", [req.params.appointmentId]);
       return a.patient_id;

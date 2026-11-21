@@ -34,30 +34,36 @@ CREATE TABLE IF NOT EXISTS bed_allocations (
   FOREIGN KEY (allocated_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
-INSERT IGNORE INTO wards (name, ward_type, floor) VALUES
-  ('General Ward A', 'general', 1),
-  ('ICU', 'icu', 2),
-  ('Emergency Bay', 'emergency', 0);
+-- Seeds run only while the table is empty, so rows an admin deletes stay deleted on later boots.
+INSERT IGNORE INTO wards (name, ward_type, floor)
+SELECT v.n, v.t, v.f FROM (
+  SELECT 'General Ward A' n, 'general' t, 1 f
+  UNION ALL SELECT 'ICU', 'icu', 2
+  UNION ALL SELECT 'Emergency Bay', 'emergency', 0
+) v JOIN (SELECT COUNT(*) c FROM wards) x ON x.c = 0;
 
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'GA-01', 1500 FROM wards WHERE name = 'General Ward A';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'GA-02', 1500 FROM wards WHERE name = 'General Ward A';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'GA-03', 1500 FROM wards WHERE name = 'General Ward A';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'GA-04', 1500 FROM wards WHERE name = 'General Ward A';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'GA-05', 1500 FROM wards WHERE name = 'General Ward A';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'GA-06', 1500 FROM wards WHERE name = 'General Ward A';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'GA-07', 1500 FROM wards WHERE name = 'General Ward A';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'GA-08', 1500 FROM wards WHERE name = 'General Ward A';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'GA-09', 1500 FROM wards WHERE name = 'General Ward A';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'GA-10', 1500 FROM wards WHERE name = 'General Ward A';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'ICU-01', 6000 FROM wards WHERE name = 'ICU';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'ICU-02', 6000 FROM wards WHERE name = 'ICU';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'ICU-03', 6000 FROM wards WHERE name = 'ICU';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'ICU-04', 6000 FROM wards WHERE name = 'ICU';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'ICU-05', 6000 FROM wards WHERE name = 'ICU';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'ICU-06', 6000 FROM wards WHERE name = 'ICU';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'ER-01', 2500 FROM wards WHERE name = 'Emergency Bay';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'ER-02', 2500 FROM wards WHERE name = 'Emergency Bay';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'ER-03', 2500 FROM wards WHERE name = 'Emergency Bay';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'ER-04', 2500 FROM wards WHERE name = 'Emergency Bay';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'ER-05', 2500 FROM wards WHERE name = 'Emergency Bay';
-INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate) SELECT id, 'ER-06', 2500 FROM wards WHERE name = 'Emergency Bay';
+INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate)
+SELECT w.id, v.b, v.r FROM (
+  SELECT 'General Ward A' w, 'GA-01' b, 1500 r
+  UNION ALL SELECT 'General Ward A', 'GA-02', 1500
+  UNION ALL SELECT 'General Ward A', 'GA-03', 1500
+  UNION ALL SELECT 'General Ward A', 'GA-04', 1500
+  UNION ALL SELECT 'General Ward A', 'GA-05', 1500
+  UNION ALL SELECT 'General Ward A', 'GA-06', 1500
+  UNION ALL SELECT 'General Ward A', 'GA-07', 1500
+  UNION ALL SELECT 'General Ward A', 'GA-08', 1500
+  UNION ALL SELECT 'General Ward A', 'GA-09', 1500
+  UNION ALL SELECT 'General Ward A', 'GA-10', 1500
+  UNION ALL SELECT 'ICU', 'ICU-01', 6000
+  UNION ALL SELECT 'ICU', 'ICU-02', 6000
+  UNION ALL SELECT 'ICU', 'ICU-03', 6000
+  UNION ALL SELECT 'ICU', 'ICU-04', 6000
+  UNION ALL SELECT 'ICU', 'ICU-05', 6000
+  UNION ALL SELECT 'ICU', 'ICU-06', 6000
+  UNION ALL SELECT 'Emergency Bay', 'ER-01', 2500
+  UNION ALL SELECT 'Emergency Bay', 'ER-02', 2500
+  UNION ALL SELECT 'Emergency Bay', 'ER-03', 2500
+  UNION ALL SELECT 'Emergency Bay', 'ER-04', 2500
+  UNION ALL SELECT 'Emergency Bay', 'ER-05', 2500
+  UNION ALL SELECT 'Emergency Bay', 'ER-06', 2500
+) v JOIN wards w ON w.name = v.w JOIN (SELECT COUNT(*) c FROM beds) x ON x.c = 0;

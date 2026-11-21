@@ -37,9 +37,13 @@ describe('createOrder', () => {
     expect(res.json.mock.calls[0][0].data).toMatchObject({ orderId: 'order_mock_abc', amount: 75050, currency: 'INR', mode: 'mock', mock: { signature: 'sig' } });
   });
 
-  test('cancelled -> 400 and already paid -> 409, without calling the gateway', async () => {
+  test('cancelled -> 400, completed -> 400 and already paid -> 409, without calling the gateway', async () => {
     db.query.mockResolvedValueOnce([[{ status: 'cancelled', payment_status: 'unpaid', doctor_id: 3 }]]);
     expect((await run(createOrder, { appointmentId: 5 }, conn())).next.mock.calls[0][0].statusCode).toBe(400);
+    db.query.mockResolvedValueOnce([[{ status: 'completed', payment_status: 'unpaid', doctor_id: 3 }]]);
+    const completed = (await run(createOrder, { appointmentId: 5 }, conn())).next.mock.calls[0][0];
+    expect(completed.statusCode).toBe(400);
+    expect(completed.message).toBe('Only upcoming appointments can be paid.');
     db.query.mockResolvedValueOnce([[{ status: 'pending', payment_status: 'paid', doctor_id: 3 }]]);
     expect((await run(createOrder, { appointmentId: 5 }, conn())).next.mock.calls[0][0].statusCode).toBe(409);
     expect(gateway.createOrder).not.toHaveBeenCalled();

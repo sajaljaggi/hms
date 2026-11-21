@@ -19,6 +19,7 @@ async function loadAppointment(q, appointmentId, patientId, lock) {
   const a = rows[0];
   if (a.status === 'cancelled') throw new ValidationError('This appointment is cancelled.');
   if (a.payment_status === 'paid') throw new ConflictError('This appointment is already paid.');
+  if (a.status !== 'pending') throw new ValidationError('Only upcoming appointments can be paid.');
   // The amount always comes from the doctor's fee in the DB, never from the client.
   const [[d]] = await q.query('SELECT ROUND(fees * 100) AS amount_paise FROM doctors WHERE id = ?', [a.doctor_id]);
   const amount = Number(d.amount_paise);

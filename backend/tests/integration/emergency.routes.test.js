@@ -76,9 +76,13 @@ describe('emergency routes', () => {
     expect(n.length).toBe(1);
     expect((await patch({ status: 'discharged' })).status).toBe(200);
     expect((await patch({ status: 'in_treatment' })).status).toBe(409);
-    const [[row]] = await db.query('SELECT closed_at, heart_rate FROM emergency_cases WHERE id = ?', [id]);
+    // a closed case cannot be edited or reassigned
+    expect((await patch({ triageLevel: 1 })).status).toBe(409);
+    expect((await patch({ assignedDoctorId: doctor.doctorId, heartRate: 120 })).status).toBe(409);
+    const [[row]] = await db.query('SELECT closed_at, heart_rate, triage_level FROM emergency_cases WHERE id = ?', [id]);
     expect(row.closed_at).not.toBeNull();
     expect(row.heart_rate).toBe(90);
+    expect(row.triage_level).toBe(4);
   });
 
   test('admit without patient_id -> 400', async () => {

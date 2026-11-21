@@ -3,6 +3,7 @@ const db = require('../config/db');
 const { NotFoundError, ConflictError } = require('../utils/errors');
 const { invalidateCache, availabilityKey } = require('../utils/cache');
 const { toDateStr } = require('../utils/dates');
+const { notifyBooking } = require('../services/notificationService');
 
 // ── Gemini Setup ──────────────────────────────────────────────────────────────
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -191,7 +192,7 @@ const chatbotBook = async (req, res, next) => {
 
     // Lock the slot row
     const [slotRows] = await conn.query(
-      'SELECT id, date, is_booked FROM doctor_slots WHERE id = ? AND doctor_id = ? FOR UPDATE',
+      'SELECT id, date, time, is_booked FROM doctor_slots WHERE id = ? AND doctor_id = ? FOR UPDATE',
       [slotId, doctorId]
     );
 
@@ -215,7 +216,9 @@ const chatbotBook = async (req, res, next) => {
 
     await conn.commit();
 
-    await invalidateCache(availabilityKey(doctorId, toDateStr(slotRows[0].date)));
+    const dateStr = toDateStr(slotRows[0].date);
+    await invalidateCache(availabilityKey(doctorId, dateStr));
+    await notifyBooking({ patientId, doctorId, dateStr, time: slotRows[0].time });
 
     res.status(201).json({
       success: true,

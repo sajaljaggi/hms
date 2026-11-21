@@ -98,10 +98,15 @@ describe('payment routes (mock mode)', () => {
     expect(appts.body.data.find((a) => a.id === apptId).payment_status).toBe('paid');
   });
 
-  test('cancelled appointment -> 400, fail endpoint marks the order failed, the next order reuses it', async () => {
+  test('cancelled or completed appointment -> 400, fail endpoint marks the order failed, the next order reuses it', async () => {
     const cancelled = await bookAppointment(patient.userId);
     await db.query("UPDATE appointments SET status = 'cancelled' WHERE id = ?", [cancelled]);
     expect((await post('/api/payments/orders', patient, { appointmentId: cancelled })).status).toBe(400);
+    const completed = await bookAppointment(patient.userId);
+    await db.query("UPDATE appointments SET status = 'completed' WHERE id = ?", [completed]);
+    const res = await post('/api/payments/orders', patient, { appointmentId: completed });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('Only upcoming appointments can be paid.');
 
     const apptId = await bookAppointment(patient.userId);
     const first = (await post('/api/payments/orders', patient, { appointmentId: apptId })).body.data;

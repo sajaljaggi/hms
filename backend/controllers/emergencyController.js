@@ -67,6 +67,7 @@ const updateCase = async (req, res, next) => {
     const doctorUserId = await inTransaction(async (conn) => {
       const [rows] = await conn.query('SELECT status FROM emergency_cases WHERE id = ? FOR UPDATE', [req.params.id]);
       if (rows.length === 0) throw new NotFoundError('Emergency case not found.');
+      if (!['waiting', 'in_treatment'].includes(rows[0].status)) throw new ConflictError(`Case is ${rows[0].status} and can no longer be changed.`);
       const sets = [];
       const params = [];
       if (status !== undefined) {
