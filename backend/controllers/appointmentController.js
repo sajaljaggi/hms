@@ -3,6 +3,7 @@ const { generateSlotsForDoctorDate } = require('../utils/generateSlots');
 const { NotFoundError, ConflictError, ValidationError } = require('../utils/errors');
 const { getCache, setCache, invalidateCache, availabilityKey } = require('../utils/cache');
 const { toDateStr } = require('../utils/dates');
+const { notifyUsers } = require('../services/notificationService');
 
 // ─── GET /api/doctors?specialization=xxx ───────────────────────────────────
 const getDoctors = async (req, res, next) => {
@@ -110,6 +111,22 @@ const bookAppointment = async (req, res, next) => {
     // The cached availability list for this doctor+date is now stale —
     // this slot just flipped from available to booked.
     await invalidateCache(availabilityKey(doctorId, dateStr));
+
+    // Best-effort: a failed lookup or notification must not fail a committed booking.
+    try {
+      const [[doc]] = await db.query('SELECT user_id FROM doctors WHERE id = ?', [doctorId]);
+      const when = `${dateStr} ${String(slotRow.time).slice(0, 5)}`;
+      await notifyUsers([patientId], {
+        type: 'appointment', title: 'Appointment booked',
+        message: `Your appointment on ${when} was booked.`, link: '/patient/history',
+      });
+      await notifyUsers([doc && doc.user_id], {
+        type: 'appointment', title: 'New appointment',
+        message: `A patient booked an appointment on ${when}.`, link: '/doctor/appointments',
+      });
+    } catch (notifyErr) {
+      console.error('booking notification failed:', notifyErr.message);
+    }
 
     res.status(201).json({
       success: true,

@@ -7,6 +7,7 @@ const SQL_FILES = [
   'migration_ratings.sql',
   'migration_slots.sql',
   'migration_doctor_image.sql',
+  'migration_notifications.sql',
 ];
 
 // MySQL error codes that mean "this exact change already happened" — safe

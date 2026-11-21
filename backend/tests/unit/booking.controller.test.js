@@ -13,7 +13,12 @@ jest.mock('../../utils/cache', () => ({
   availabilityKey: (doctorId, date) => `availability:${doctorId}:${date}`,
 }));
 
+jest.mock('../../services/notificationService', () => ({
+  notifyUsers: jest.fn().mockResolvedValue(1),
+}));
+
 const db = require('../../config/db');
+const { notifyUsers } = require('../../services/notificationService');
 const { bookAppointment } = require('../../controllers/appointmentController');
 const { NotFoundError, ConflictError, ValidationError } = require('../../utils/errors');
 
@@ -59,10 +64,14 @@ describe('bookAppointment (conflict-resolution logic)', () => {
       .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE is_booked
       .mockResolvedValueOnce([{ insertId: 555 }]); // INSERT appointment
     db.getConnection.mockResolvedValue(conn);
+    db.query.mockResolvedValueOnce([[{ user_id: 77 }]]); // doctor's user_id
 
     const { req, res, next } = mockReqRes({ slotId: 1 });
     await bookAppointment(req, res, next);
 
+    expect(notifyUsers).toHaveBeenCalledTimes(2);
+    expect(notifyUsers).toHaveBeenNthCalledWith(1, [42], expect.objectContaining({ title: 'Appointment booked', link: '/patient/history' }));
+    expect(notifyUsers).toHaveBeenNthCalledWith(2, [77], expect.objectContaining({ title: 'New appointment', link: '/doctor/appointments' }));
     expect(next).not.toHaveBeenCalled();
     expect(conn.commit).toHaveBeenCalledTimes(1);
     expect(conn.rollback).not.toHaveBeenCalled();
@@ -81,6 +90,7 @@ describe('bookAppointment (conflict-resolution logic)', () => {
     expect(res.json).not.toHaveBeenCalled();
     expect(conn.commit).not.toHaveBeenCalled();
     expect(conn.rollback).toHaveBeenCalledTimes(1);
+    expect(notifyUsers).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledTimes(1);
     const err = next.mock.calls[0][0];
     expect(err).toBeInstanceOf(ConflictError);
@@ -144,6 +154,7 @@ describe('bookAppointment (conflict-resolution logic)', () => {
       .mockResolvedValueOnce([{ insertId: 102 }]);
 
     db.getConnection.mockResolvedValueOnce(connA).mockResolvedValueOnce(connB);
+    db.query.mockResolvedValue([[{ user_id: 77 }]]);
 
     const first = mockReqRes({ slotId: 10 });
     await bookAppointment(first.req, first.res, first.next);
