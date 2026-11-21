@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const db = require('../config/db');
 const { generateSlotsForDoctorDate } = require('../utils/generateSlots');
 const { NotFoundError, ConflictError, ValidationError } = require('../utils/errors');
@@ -65,7 +66,8 @@ const getAvailableSlots = async (req, res, next) => {
 const bookAppointment = async (req, res, next) => {
   const conn = await db.getConnection();
   try {
-    const { doctorId, slotId, reason } = req.body;
+    const { doctorId, slotId, reason, consultationType = 'in_person' } = req.body;
+    const isVideo = consultationType === 'video';
     const patientId = req.user.id;
 
     await conn.beginTransaction();
@@ -101,9 +103,9 @@ const bookAppointment = async (req, res, next) => {
 
     // Create appointment
     const [result] = await conn.query(
-      `INSERT INTO appointments (patient_id, doctor_id, slot_id, status, reason)
-       VALUES (?, ?, ?, 'pending', ?)`,
-      [patientId, doctorId, slotId, reason || null]
+      `INSERT INTO appointments (patient_id, doctor_id, slot_id, status, reason, consultation_type, video_room)
+       VALUES (?, ?, ?, 'pending', ?, ?, ?)`,
+      [patientId, doctorId, slotId, reason || null, consultationType, isVideo ? `hms-${crypto.randomBytes(16).toString('hex')}` : null]
     );
 
     await conn.commit();
@@ -116,13 +118,14 @@ const bookAppointment = async (req, res, next) => {
     try {
       const [[doc]] = await db.query('SELECT user_id FROM doctors WHERE id = ?', [doctorId]);
       const when = `${dateStr} ${String(slotRow.time).slice(0, 5)}`;
+      const kind = isVideo ? 'video ' : '';
       await notifyUsers([patientId], {
         type: 'appointment', title: 'Appointment booked',
-        message: `Your appointment on ${when} was booked.`, link: '/patient/history',
+        message: `Your ${kind}appointment on ${when} was booked.`, link: '/patient/history',
       });
       await notifyUsers([doc && doc.user_id], {
         type: 'appointment', title: 'New appointment',
-        message: `A patient booked an appointment on ${when}.`, link: '/doctor/appointments',
+        message: `A patient booked a ${kind}appointment on ${when}.`, link: '/doctor/appointments',
       });
     } catch (notifyErr) {
       console.error('booking notification failed:', notifyErr.message);

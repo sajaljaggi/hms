@@ -16,6 +16,7 @@ const bedRoutes = require('./routes/bedRoutes');
 const bloodBankRoutes = require('./routes/bloodBankRoutes');
 const emergencyRoutes = require('./routes/emergencyRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
+const teleconsultRoutes = require('./routes/teleconsultRoutes');
 
 // Error handler middleware
 const errorHandler = require('./middleware/errorHandler');
@@ -67,6 +68,7 @@ app.use('/api/beds', bedRoutes);
 app.use('/api/blood', bloodBankRoutes);
 app.use('/api/emergency', emergencyRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/teleconsult', teleconsultRoutes);
 
 // Health check — also queries the DB (not just a liveness ping) so it
 // doubles as the target for the keep-alive workflow: free-tier managed

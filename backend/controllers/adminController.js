@@ -46,7 +46,7 @@ const getAllAppointments = async (req, res, next) => {
   try {
     let sql = `
       SELECT
-        a.id, a.status, a.payment_status, a.created_at,
+        a.id, a.status, a.payment_status, a.consultation_type, a.created_at,
         ds.date, ds.time,
         pu.name  AS patient_name,
         pu.email AS patient_email,

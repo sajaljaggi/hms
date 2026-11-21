@@ -16,6 +16,7 @@ const bookAppointmentSchema = z.object({
   doctorId: idParam,
   slotId:   idParam,
   reason:   emptyToUndefined(z.string().trim().max(500).optional()),
+  consultationType: z.enum(['in_person', 'video']).default('in_person'),
 });
 
 module.exports = { getDoctorsQuerySchema, getSlotsQuerySchema, bookAppointmentSchema };
