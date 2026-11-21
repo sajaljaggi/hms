@@ -2,22 +2,7 @@ const db = require('../config/db');
 const { NotFoundError, ConflictError } = require('../utils/errors');
 const { allocateBed, dischargeAllocation } = require('../services/bedService');
 const { notifyUsers } = require('../services/notificationService');
-
-// Runs fn(conn) in a transaction: rollback on error, release always.
-async function inTransaction(fn) {
-  const conn = await db.getConnection();
-  try {
-    await conn.beginTransaction();
-    const result = await fn(conn);
-    await conn.commit();
-    return result;
-  } catch (err) {
-    try { await conn.rollback(); } catch { /* keep the original error */ }
-    throw err;
-  } finally {
-    conn.release();
-  }
-}
+const { inTransaction } = require('../utils/transaction');
 
 const COUNTS = `COUNT(b.id) AS total,
   COALESCE(SUM(b.status = 'available'), 0) AS available,
