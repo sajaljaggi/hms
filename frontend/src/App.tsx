@@ -23,6 +23,9 @@ const AdminDashboard = React.lazy(() => import('./pages/admin/Dashboard'));
 const AdminPatients = React.lazy(() => import('./pages/admin/AdminPatients'));
 const AdminAppointments = React.lazy(() => import('./pages/admin/AdminAppointments'));
 const AdminDoctors = React.lazy(() => import('./pages/admin/AdminDoctors'));
+const BedManagement = React.lazy(() => import('./pages/shared/BedManagement'));
+const BloodBank = React.lazy(() => import('./pages/shared/BloodBank'));
+const EmergencyBoard = React.lazy(() => import('./pages/shared/EmergencyBoard'));
 const Home = React.lazy(() => import('./pages/Home'));
 
 const Loader = () => (
@@ -55,6 +58,9 @@ function App() {
                 <Route index element={<DoctorDashboard />} />
                 <Route path="appointments" element={<DoctorAppointments />} />
                 <Route path="prescribe" element={<DoctorPrescribe />} />
+                <Route path="beds" element={<BedManagement />} />
+                <Route path="blood" element={<BloodBank />} />
+                <Route path="emergency" element={<EmergencyBoard />} />
               </Route>
 
               {/* Admin Routes */}
@@ -63,6 +69,9 @@ function App() {
                 <Route path="patients" element={<AdminPatients />} />
                 <Route path="appointments" element={<AdminAppointments />} />
                 <Route path="doctors" element={<AdminDoctors />} />
+                <Route path="beds" element={<BedManagement />} />
+                <Route path="blood" element={<BloodBank />} />
+                <Route path="emergency" element={<EmergencyBoard />} />
               </Route>
             </Route>
 

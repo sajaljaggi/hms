@@ -78,6 +78,8 @@ const NotificationBell = () => {
   const handleMarkAll = async () => {
     try {
       await notificationService.markAllRead();
+    } catch {
+      // Failure is visible on refresh (badge stays); avoid an unhandled rejection.
     } finally {
       refresh();
     }
