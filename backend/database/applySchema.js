@@ -60,6 +60,8 @@ function stripUnsupportedIfNotExists(sql) {
 // which is caught and ignored below, same effect as IF NOT EXISTS without
 // needing the MySQL version that supports it.
 async function applySchema(conn) {
+  // Same session zone as config/db.js, so DEFAULT CURRENT_TIMESTAMP values written here match the app's.
+  await conn.query("SET time_zone = '+05:30'");
   for (const file of SQL_FILES) {
     const raw = fs.readFileSync(path.join(__dirname, file), 'utf8');
     const statements = splitStatements(stripNonStatementLines(stripUnsupportedIfNotExists(raw)));

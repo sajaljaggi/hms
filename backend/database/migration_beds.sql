@@ -42,28 +42,18 @@ SELECT v.n, v.t, v.f FROM (
   UNION ALL SELECT 'Emergency Bay', 'emergency', 0
 ) v JOIN (SELECT COUNT(*) c FROM wards) x ON x.c = 0;
 
+-- One statement so the beds-empty guard holds for all of it. Table columns are compared only with
+-- plain literals (never with derived-table strings) to avoid MySQL 8 collation-mix errors.
 INSERT IGNORE INTO beds (ward_id, bed_number, daily_rate)
-SELECT w.id, v.b, v.r FROM (
-  SELECT 'General Ward A' w, 'GA-01' b, 1500 r
-  UNION ALL SELECT 'General Ward A', 'GA-02', 1500
-  UNION ALL SELECT 'General Ward A', 'GA-03', 1500
-  UNION ALL SELECT 'General Ward A', 'GA-04', 1500
-  UNION ALL SELECT 'General Ward A', 'GA-05', 1500
-  UNION ALL SELECT 'General Ward A', 'GA-06', 1500
-  UNION ALL SELECT 'General Ward A', 'GA-07', 1500
-  UNION ALL SELECT 'General Ward A', 'GA-08', 1500
-  UNION ALL SELECT 'General Ward A', 'GA-09', 1500
-  UNION ALL SELECT 'General Ward A', 'GA-10', 1500
-  UNION ALL SELECT 'ICU', 'ICU-01', 6000
-  UNION ALL SELECT 'ICU', 'ICU-02', 6000
-  UNION ALL SELECT 'ICU', 'ICU-03', 6000
-  UNION ALL SELECT 'ICU', 'ICU-04', 6000
-  UNION ALL SELECT 'ICU', 'ICU-05', 6000
-  UNION ALL SELECT 'ICU', 'ICU-06', 6000
-  UNION ALL SELECT 'Emergency Bay', 'ER-01', 2500
-  UNION ALL SELECT 'Emergency Bay', 'ER-02', 2500
-  UNION ALL SELECT 'Emergency Bay', 'ER-03', 2500
-  UNION ALL SELECT 'Emergency Bay', 'ER-04', 2500
-  UNION ALL SELECT 'Emergency Bay', 'ER-05', 2500
-  UNION ALL SELECT 'Emergency Bay', 'ER-06', 2500
-) v JOIN wards w ON w.name = v.w JOIN (SELECT COUNT(*) c FROM beds) x ON x.c = 0;
+SELECT w.id,
+  CONCAT(CASE WHEN w.name = 'General Ward A' THEN 'GA' WHEN w.name = 'ICU' THEN 'ICU' ELSE 'ER' END, '-', LPAD(n.n, 2, '0')),
+  CASE WHEN w.name = 'General Ward A' THEN 1500 WHEN w.name = 'ICU' THEN 6000 ELSE 2500 END
+FROM wards w
+JOIN (
+  SELECT 1 n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5
+  UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10
+) n
+JOIN (SELECT COUNT(*) c FROM beds) x ON x.c = 0
+WHERE (w.name = 'General Ward A' AND n.n <= 10)
+   OR (w.name = 'ICU' AND n.n <= 6)
+   OR (w.name = 'Emergency Bay' AND n.n <= 6);
