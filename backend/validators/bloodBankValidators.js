@@ -1,11 +1,10 @@
 const { z } = require('zod');
-const { idParam, emptyToUndefined } = require('./common');
+const { idParam, emptyToUndefined, isoDate } = require('./common');
 
 const GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 const COMPONENTS = ['whole_blood', 'packed_rbc', 'plasma', 'platelets'];
 const group = z.enum(GROUPS);
 const component = z.enum(COMPONENTS);
-const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((s) => !Number.isNaN(Date.parse(s)), 'Invalid date');
 
 const idParamsSchema = z.object({ id: idParam });
 
@@ -25,7 +24,7 @@ const donationSchema = z.object({
   donorId: idParam,
   component,
   volumeMl: z.coerce.number().int().min(100).max(600),
-  collectedOn: emptyToUndefined(dateStr.optional()),
+  collectedOn: emptyToUndefined(isoDate.optional()),
 });
 
 const listUnitsQuerySchema = z.object({

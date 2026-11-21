@@ -102,6 +102,9 @@ describe('blood bank routes', () => {
     const [[row]] = await db.query('SELECT last_donation_date FROM blood_donors WHERE id = ?', [d]);
     expect(toDateStr(row.last_donation_date)).toBe(ago(60));
     expect((await donate(d, 'plasma', addDays(today, 2))).status).toBe(400);
+    expect((await donate(d, 'plasma', '2026-02-31')).status).toBe(400); // impossible date
+    const leap = await newDonor('O+');
+    expect((await donate(leap, 'plasma', '2024-02-29')).status).toBe(201);
     expect((await post('/api/blood/donations', admin, { donorId: d, component: 'plasma', volumeMl: 50 })).status).toBe(400);
     expect((await donate(999999999, 'plasma')).status).toBe(404);
   });
@@ -146,7 +149,7 @@ describe('blood bank routes', () => {
     const [d1, d2] = await Promise.all([newDonor('AB-'), newDonor('A-')]);
     await donate(d1, 'plasma', ago(2));
     await donate(d2, 'plasma', ago(1));
-    // Plasma for AB- accepts AB-/AB+: only the AB- unit above matches (A- cannot give to AB- plasma? it can't).
+    // AB- plasma recipients accept only AB donors, so only the AB- unit matches (the A- unit is not eligible).
     const a = (await newRequest('AB-', 'plasma', 1)).body.data.id;
     const b = (await newRequest('AB-', 'plasma', 1)).body.data.id;
     const results = await Promise.all([a, b].map((id) => post(`/api/blood/requests/${id}/fulfill`, admin, {})));
