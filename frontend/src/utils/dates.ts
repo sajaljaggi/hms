@@ -6,7 +6,8 @@ export const formatDbDate = (value: string | null | undefined): string => {
   if (!value) return '-';
   // A bare YYYY-MM-DD (e.g. the donation response's expiresOn) is already a calendar date: parse it as local.
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  return format(m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(value), 'dd MMM yyyy');
+  const d = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(value);
+  return Number.isNaN(d.getTime()) ? '-' : format(d, 'dd MMM yyyy');
 };
 
 // Local YYYY-MM-DD for date inputs / request bodies.

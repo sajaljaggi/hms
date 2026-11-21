@@ -12,6 +12,7 @@ describe('dates', () => {
   it('handles empty values', () => {
     expect(formatDbDate(null)).toBe('-');
     expect(formatDbDate(undefined)).toBe('-');
+    expect(formatDbDate('garbage')).toBe('-');
   });
   it('formats a local YYYY-MM-DD', () => {
     expect(localDateInput(new Date(2026, 0, 5))).toBe('2026-01-05');

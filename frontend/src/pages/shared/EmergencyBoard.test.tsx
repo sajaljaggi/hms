@@ -85,4 +85,15 @@ describe('EmergencyBoard', () => {
       requiresImmediateIntervention: true, highRisk: true,
     }));
   });
+
+  it('refetches beds and clears the selection after a failed admit', async () => {
+    svc.admit.mockRejectedValue({ response: { data: { message: 'Bed already taken' } } });
+    render(<EmergencyBoard />);
+    await userEvent.click(within(await screen.findByTestId('case-2')).getByRole('button', { name: 'Admit' }));
+    await userEvent.selectOptions(await screen.findByLabelText('Bed'), '11');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm admit' }));
+    expect(await screen.findByText('Bed already taken')).toBeInTheDocument();
+    expect(bedService.getBeds).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText('Bed')).toHaveValue('');
+  });
 });

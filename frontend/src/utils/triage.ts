@@ -30,4 +30,4 @@ export const ALLOWED_TRANSITIONS: Record<EmergencyStatus, EmergencyStatus[]> = {
   transferred: [],
 };
 
-export const canTransition = (from: EmergencyStatus, to: EmergencyStatus) => ALLOWED_TRANSITIONS[from].includes(to);
+export const canTransition = (from: EmergencyStatus, to: EmergencyStatus) => (ALLOWED_TRANSITIONS[from] ?? []).includes(to);

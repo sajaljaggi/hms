@@ -72,11 +72,29 @@ describe('BloodBank', () => {
 
   it('shows the 409 insufficient-stock message inline on fulfill', async () => {
     asRole('admin', 99);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     svc.fulfillRequest.mockRejectedValue({ response: { data: { message: 'Insufficient stock: 1 of 3 units available' } } });
     render(<BloodBank />);
     await userEvent.click(await screen.findByRole('tab', { name: 'requests' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Fulfill' }));
     expect(await screen.findByText('Insufficient stock: 1 of 3 units available')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument(); // not the requester
+  });
+
+  it('does not fulfill when the confirm is declined', async () => {
+    asRole('admin', 99);
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    render(<BloodBank />);
+    await userEvent.click(await screen.findByRole('tab', { name: 'requests' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Fulfill' }));
+    expect(svc.fulfillRequest).not.toHaveBeenCalled();
+  });
+
+  it('shows only the error when the inventory fetch fails', async () => {
+    asRole('admin');
+    svc.getInventory.mockRejectedValue({ response: { data: { message: 'boom' } } });
+    render(<BloodBank />);
+    expect(await screen.findByText('boom')).toBeInTheDocument();
+    expect(screen.queryAllByTestId(/^inv-/)).toHaveLength(0);
   });
 });

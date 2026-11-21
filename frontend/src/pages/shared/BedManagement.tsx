@@ -27,6 +27,7 @@ export default function BedManagement() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pending, setPending] = useState<string | null>(null);
+  const [dialogError, setDialogError] = useState('');
 
   const [allocBed, setAllocBed] = useState<Bed | null>(null);
   const [patient, setPatient] = useState<PatientSearchResult | null>(null);
@@ -58,27 +59,29 @@ export default function BedManagement() {
   useEffect(() => { load(); }, [load]);
 
   // Runs a mutation with a pending key, shows errors, re-fetches on success. Returns success.
-  const run = async (key: string, fn: () => Promise<unknown>, fallback: string) => {
+  const run = async (key: string, fn: () => Promise<unknown>, fallback: string, inDialog = false) => {
     setPending(key);
     setError('');
+    setDialogError('');
     try {
       await fn();
       await load();
       return true;
     } catch (err) {
-      setError(getErrorMessage(err, fallback));
+      // Dialog actions report inside the dialog: the page banner sits behind the backdrop.
+      (inDialog ? setDialogError : setError)(getErrorMessage(err, fallback));
       return false;
     } finally {
       setPending(null);
     }
   };
 
-  const closeAlloc = () => { setAllocBed(null); setPatient(null); setReason(''); };
+  const closeAlloc = () => { setDialogError(''); setAllocBed(null); setPatient(null); setReason(''); };
 
   const submitAllocate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!allocBed || !patient) return;
-    const ok = await run('allocate', () => bedService.allocate(allocBed.id, { patientId: patient.id, reason: reason.trim() || undefined }), 'Failed to allocate bed');
+    const ok = await run('allocate', () => bedService.allocate(allocBed.id, { patientId: patient.id, reason: reason.trim() || undefined }), 'Failed to allocate bed', true);
     if (ok) closeAlloc();
   };
 
@@ -93,7 +96,7 @@ export default function BedManagement() {
     if (!wardForm) return;
     const ok = await run('ward', () => bedService.createWard({
       name: wardForm.name.trim(), wardType: wardForm.wardType, floor: wardForm.floor ? Number(wardForm.floor) : undefined,
-    }), 'Failed to add ward');
+    }), 'Failed to add ward', true);
     if (ok) setWardForm(null);
   };
 
@@ -103,7 +106,7 @@ export default function BedManagement() {
     const ok = await run('bed', () => bedService.createBed({
       wardId: Number(bedForm.wardId), bedNumber: bedForm.bedNumber.trim(),
       dailyRate: bedForm.dailyRate ? Number(bedForm.dailyRate) : undefined,
-    }), 'Failed to add bed');
+    }), 'Failed to add bed', true);
     if (ok) setBedForm(null);
   };
 
@@ -118,10 +121,10 @@ export default function BedManagement() {
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><BedDouble className="h-6 w-6 text-teal-600" /> Bed Management</h1>
         {isAdmin && (
           <div className="flex gap-2">
-            <button type="button" className={`${btn} bg-teal-600 text-white hover:bg-teal-700 flex items-center gap-1`} onClick={() => setWardForm({ name: '', wardType: 'general', floor: '' })}>
+            <button type="button" className={`${btn} bg-teal-600 text-white hover:bg-teal-700 flex items-center gap-1`} onClick={() => { setDialogError(''); setWardForm({ name: '', wardType: 'general', floor: '' }); }}>
               <Plus className="h-4 w-4" /> Add ward
             </button>
-            <button type="button" className={`${btn} border border-teal-600 text-teal-700 hover:bg-teal-50 flex items-center gap-1`} onClick={() => setBedForm({ wardId: wards[0] ? String(wards[0].id) : '', bedNumber: '', dailyRate: '' })}>
+            <button type="button" className={`${btn} border border-teal-600 text-teal-700 hover:bg-teal-50 flex items-center gap-1`} onClick={() => { setDialogError(''); setBedForm({ wardId: wards[0] ? String(wards[0].id) : '', bedNumber: '', dailyRate: '' }); }}>
               <Plus className="h-4 w-4" /> Add bed
             </button>
           </div>
@@ -187,6 +190,7 @@ export default function BedManagement() {
           <form onSubmit={submitAllocate} className="bg-white rounded-lg p-6 w-full max-w-md space-y-4">
             <h2 className="text-lg font-semibold">Allocate {allocBed.ward_name} / {allocBed.bed_number}</h2>
             <PatientPicker value={patient} onChange={setPatient} />
+            {dialogError && <p role="alert" className="text-sm text-red-700">{dialogError}</p>}
             <label className="block text-sm font-medium text-gray-700">Reason
               <input className={`${input} w-full mt-1`} value={reason} onChange={(e) => setReason(e.target.value)} />
             </label>
@@ -204,6 +208,7 @@ export default function BedManagement() {
         <div role="dialog" aria-label="Add ward" className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
           <form onSubmit={submitWard} className="bg-white rounded-lg p-6 w-full max-w-md space-y-3">
             <h2 className="text-lg font-semibold">Add ward</h2>
+            {dialogError && <p role="alert" className="text-sm text-red-700">{dialogError}</p>}
             <label className="block text-sm">Name<input required className={`${input} w-full mt-1`} value={wardForm.name} onChange={(e) => setWardForm({ ...wardForm, name: e.target.value })} /></label>
             <label className="block text-sm">Type
               <select className={`${input} w-full mt-1`} value={wardForm.wardType} onChange={(e) => setWardForm({ ...wardForm, wardType: e.target.value as WardType })}>
@@ -212,7 +217,7 @@ export default function BedManagement() {
             </label>
             <label className="block text-sm">Floor<input type="number" className={`${input} w-full mt-1`} value={wardForm.floor} onChange={(e) => setWardForm({ ...wardForm, floor: e.target.value })} /></label>
             <div className="flex justify-end gap-2">
-              <button type="button" className={`${btn} border border-gray-300`} onClick={() => setWardForm(null)}>Cancel</button>
+              <button type="button" className={`${btn} border border-gray-300`} onClick={() => { setDialogError(''); setWardForm(null); }}>Cancel</button>
               <button type="submit" className={`${btn} bg-teal-600 text-white`} disabled={pending === 'ward'}>{pending === 'ward' ? 'Saving...' : 'Save ward'}</button>
             </div>
           </form>
@@ -223,6 +228,7 @@ export default function BedManagement() {
         <div role="dialog" aria-label="Add bed" className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
           <form onSubmit={submitBed} className="bg-white rounded-lg p-6 w-full max-w-md space-y-3">
             <h2 className="text-lg font-semibold">Add bed</h2>
+            {dialogError && <p role="alert" className="text-sm text-red-700">{dialogError}</p>}
             <label className="block text-sm">Ward
               <select required className={`${input} w-full mt-1`} value={bedForm.wardId} onChange={(e) => setBedForm({ ...bedForm, wardId: e.target.value })}>
                 {wards.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -231,7 +237,7 @@ export default function BedManagement() {
             <label className="block text-sm">Bed number<input required className={`${input} w-full mt-1`} value={bedForm.bedNumber} onChange={(e) => setBedForm({ ...bedForm, bedNumber: e.target.value })} /></label>
             <label className="block text-sm">Daily rate<input type="number" min="0" className={`${input} w-full mt-1`} value={bedForm.dailyRate} onChange={(e) => setBedForm({ ...bedForm, dailyRate: e.target.value })} /></label>
             <div className="flex justify-end gap-2">
-              <button type="button" className={`${btn} border border-gray-300`} onClick={() => setBedForm(null)}>Cancel</button>
+              <button type="button" className={`${btn} border border-gray-300`} onClick={() => { setDialogError(''); setBedForm(null); }}>Cancel</button>
               <button type="submit" className={`${btn} bg-teal-600 text-white`} disabled={pending === 'bed'}>{pending === 'bed' ? 'Saving...' : 'Save bed'}</button>
             </div>
           </form>

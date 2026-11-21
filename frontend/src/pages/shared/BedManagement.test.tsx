@@ -58,6 +58,19 @@ describe('BedManagement', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('shows an allocate failure inside the dialog', async () => {
+    asRole('doctor');
+    svc.allocate.mockRejectedValue({ response: { data: { message: 'Bed is no longer available' } } });
+    render(<BedManagement />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Allocate' }));
+    const dialog = screen.getByRole('dialog', { name: 'Allocate bed' });
+    await userEvent.type(within(dialog).getByPlaceholderText(/search by name/i), 'pat');
+    await userEvent.click(await within(dialog).findByRole('option', { name: /Pat Doe/ }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm allocation' }));
+    expect(await within(dialog).findByText('Bed is no longer available')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Allocate bed' })).toBeInTheDocument();
+  });
+
   it('confirms before discharging', async () => {
     asRole('doctor');
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);

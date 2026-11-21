@@ -113,8 +113,7 @@ export default function EmergencyBoard() {
     act(`${status}-${c.id}`, () => emergencyService.updateCase(c.id, { status }), 'Failed to update case');
   };
 
-  const openAdmit = async (c: EmergencyCase) => {
-    setAdmitFor(c.id);
+  const loadFreeBeds = async () => {
     setBedId('');
     try {
       const res = await bedService.getBeds({ status: 'available' });
@@ -124,8 +123,14 @@ export default function EmergencyBoard() {
     }
   };
 
+  const openAdmit = (c: EmergencyCase) => {
+    setAdmitFor(c.id);
+    return loadFreeBeds();
+  };
+
   const confirmAdmit = async (c: EmergencyCase) => {
     if (await act(`admit-${c.id}`, () => emergencyService.admit(c.id, Number(bedId)), 'Failed to admit patient')) setAdmitFor(null);
+    else await loadFreeBeds(); // the chosen bed may be gone: refresh the list and clear the selection
   };
 
   const field = (k: keyof typeof EMPTY) => ({

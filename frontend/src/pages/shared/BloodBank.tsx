@@ -59,6 +59,7 @@ function InventoryTab() {
   }, []);
 
   if (loading) return <p className="text-gray-500">Loading inventory...</p>;
+  if (error) return <Alert msg={error} />;
   const cell = (g: BloodGroup, c: BloodComponent) => rows.find((r) => r.blood_group === g && r.component === c);
 
   return (
@@ -119,6 +120,7 @@ function RequestsTab({ isAdmin, userId }: { isAdmin: boolean; userId?: number })
   useEffect(() => { load(); }, [load]);
 
   const rowAction = async (r: BloodRequest, kind: 'fulfill' | 'reject' | 'cancel') => {
+    if (kind !== 'cancel' && !window.confirm(`${kind === 'fulfill' ? 'Fulfill' : 'Reject'} request #${r.id} for ${r.patient_name}?`)) return;
     setPending(`${kind}-${r.id}`);
     setRowError(null);
     try {
