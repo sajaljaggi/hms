@@ -51,6 +51,47 @@ describe('History', () => {
   });
 });
 
+describe('History date filter and razorpay dismiss', () => {
+  it('matches an ISO UTC value to its local date', async () => {
+    const d = new Date(2026, 10, 22); // local 22 Nov
+    vi.mocked(patientService.getAppointments).mockResolvedValue({ data: { data: [appt(1, { date: d.toISOString() })] } } as never);
+    const { container } = render(<MemoryRouter><History /></MemoryRouter>);
+    await screen.findByText('Dr 1');
+    const input = container.querySelector('input[type="date"]')!;
+    await userEvent.type(input, '2026-11-22');
+    expect(screen.getByText('Dr 1')).toBeInTheDocument();
+    await userEvent.clear(input);
+    await userEvent.type(input, '2026-11-23');
+    expect(screen.queryByText('Dr 1')).not.toBeInTheDocument();
+  });
+
+  it('razorpay dismiss calls failOrder once, even after payment.failed', async () => {
+    vi.mocked(patientService.getAppointments).mockResolvedValue({ data: { data: [appt(1, {})] } } as never);
+    vi.mocked(paymentService.createOrder).mockResolvedValue({ data: { data: {
+      orderId: 'o1', amount: 50000, currency: 'INR', mode: 'razorpay', appointmentId: 1, keyId: 'k',
+    } } } as never);
+    vi.mocked(paymentService.failOrder).mockResolvedValue({} as never);
+    let opts: { modal: { ondismiss: () => void } } | undefined;
+    const handlers: Record<string, () => void> = {};
+    (window as unknown as Record<string, unknown>).Razorpay = function (o: typeof opts) { opts = o; return { open: vi.fn(), on: (e: string, cb: () => void) => { handlers[e] = cb; } }; };
+    vi.spyOn(document.head, 'appendChild').mockImplementation(el => { setTimeout(() => (el as HTMLScriptElement).onload?.(new Event('load')), 0); return el; });
+    try {
+      render(<MemoryRouter><History /></MemoryRouter>);
+      await userEvent.click(await screen.findByRole('button', { name: /Pay ₹500/ }));
+      await waitFor(() => expect(opts).toBeDefined());
+      handlers['payment.failed']();
+      expect(paymentService.failOrder).not.toHaveBeenCalled();
+      opts!.modal.ondismiss();
+      opts!.modal.ondismiss();
+      await waitFor(() => expect(paymentService.failOrder).toHaveBeenCalledTimes(1));
+      expect(await screen.findByText('Payment failed.')).toBeInTheDocument();
+    } finally {
+      delete (window as unknown as Record<string, unknown>).Razorpay;
+      vi.restoreAllMocks();
+    }
+  });
+});
+
 describe('BookAppointment', () => {
   it('sends consultationType video', async () => {
     vi.mocked(patientService.getDoctors).mockResolvedValue({ data: { data: [{ id: 9, name: 'Dr Nine', fees: 400, specialization: 'Cardiology' }] } } as never);

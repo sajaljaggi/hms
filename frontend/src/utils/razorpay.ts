@@ -1,4 +1,4 @@
-import { loadScript } from './scriptLoader';
+import { loadScript, evictScript } from './scriptLoader';
 
 export interface RazorpayOptions {
   key: string; amount: number; currency: string; order_id: string; name: string;
@@ -11,9 +11,11 @@ export interface RazorpayInstance {
 }
 type RazorpayCtor = new (opts: RazorpayOptions) => RazorpayInstance;
 
+const src = 'https://checkout.razorpay.com/v1/checkout.js';
+
 export const loadRazorpay = async (): Promise<RazorpayCtor> => {
-  await loadScript('https://checkout.razorpay.com/v1/checkout.js');
+  await loadScript(src);
   const ctor = (window as unknown as { Razorpay?: RazorpayCtor }).Razorpay;
-  if (!ctor) throw new Error('Razorpay checkout is unavailable.');
+  if (!ctor) { evictScript(src); throw new Error('Razorpay checkout is unavailable.'); }
   return ctor;
 };

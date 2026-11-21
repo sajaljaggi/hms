@@ -4,6 +4,7 @@ import { Calendar, Clock, Download, AlertCircle, Search, Filter, X, Star, Video 
 import { patientService } from '../../services/patientService';
 import { format, parse, addMinutes } from 'date-fns';
 import { getErrorMessage } from '../../utils/getErrorMessage';
+import { formatDbDate, localDateInput } from '../../utils/dates';
 import { usePayment } from '../../components/usePayment';
 import { backendFileUrl } from '../../config';
 
@@ -119,7 +120,7 @@ export default function History() {
 
   const filtered = useMemo(() => appointments.filter(appt => {
     const specMatch = searchSpec ? appt.specialization === searchSpec : true;
-    const dateMatch = searchDate ? appt.date.startsWith(searchDate) : true;
+    const dateMatch = searchDate ? localDateInput(new Date(appt.date)) === searchDate : true;
     return specMatch && dateMatch;
   }), [appointments, searchSpec, searchDate]);
 
@@ -209,7 +210,7 @@ export default function History() {
                 <div className="flex items-center gap-3 mt-2 text-sm text-gray-500">
                   <span className="flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5" />
-                    {format(new Date(appt.date), 'MMM dd, yyyy')}
+                    {formatDbDate(appt.date)}
                   </span>
                   <span className="flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5" />

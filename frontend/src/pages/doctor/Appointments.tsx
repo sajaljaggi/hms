@@ -24,6 +24,7 @@ export default function DoctorAppointments() {
   const [dateFilter, setDateFilter]       = useState('');
   const [patientFilter, setPatientFilter] = useState('');
   const [error, setError] = useState('');
+  const [completingId, setCompletingId] = useState<number | null>(null);
 
   const fetchData = (showLoading = true) => {
     if (showLoading) setLoading(true);
@@ -50,11 +51,15 @@ export default function DoctorAppointments() {
   };
 
   const completeVideo = async (id: number) => {
+    if (completingId !== null) return;
+    setCompletingId(id);
     try {
       await teleconsultService.complete(id);
       setAppointments(prev => prev.map(a => a.id === id ? { ...a, status: 'completed' } : a));
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to mark consultation completed.'));
+    } finally {
+      setCompletingId(null);
     }
   };
 
@@ -112,7 +117,7 @@ export default function DoctorAppointments() {
                         <Video className="w-3.5 h-3.5" /> Join video
                       </Link>
                     )}
-                    <button onClick={() => completeVideo(appt.id)}
+                    <button onClick={() => completeVideo(appt.id)} disabled={completingId !== null}
                       className="flex items-center gap-1 text-xs font-medium bg-green-600 text-white px-3 py-1.5 rounded-md hover:bg-green-700 transition">
                       <CheckCircle className="w-3.5 h-3.5" /> Mark completed
                     </button>

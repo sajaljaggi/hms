@@ -16,3 +16,6 @@ export function loadScript(src: string): Promise<void> {
   cache.set(src, p);
   return p;
 }
+
+// For callers whose script loaded but did not define the expected global.
+export const evictScript = (src: string) => { cache.delete(src); document.querySelectorAll('script').forEach(el => { if (el.src === src) el.remove(); }); };

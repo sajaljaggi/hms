@@ -39,20 +39,25 @@ export function usePayment(onSettled: () => void) {
   const pay = async (appointmentId: number) => {
     if (busy.current) return;
     busy.current = true; setBusyId(appointmentId); setNotice(null); setModalError('');
+    let orderId: string | null = null;
     try {
       const order = (await paymentService.createOrder(appointmentId)).data.data;
+      orderId = order.orderId;
       if (order.mode === 'mock') { setMockOrder(order); return; }
       if (!order.keyId) throw new Error('Payment gateway is misconfigured.');
       const Razorpay = await loadRazorpay();
       let settled = false;
+      let failMsg = 'Payment was cancelled.';
       const rzp = new Razorpay({
         key: order.keyId, amount: order.amount, currency: order.currency, order_id: order.orderId, name: 'HMS',
         handler: r => { settled = true; void verify(r.razorpay_order_id, r.razorpay_payment_id, r.razorpay_signature); },
-        modal: { ondismiss: () => { if (!settled) { settled = true; void fail(order.orderId, 'Payment was cancelled.'); } } },
+        modal: { ondismiss: () => { if (!settled) { settled = true; void fail(order.orderId, failMsg); } } },
       });
-      rzp.on('payment.failed', () => { if (!settled) { settled = true; void fail(order.orderId, 'Payment failed.'); } });
+      // Razorpay keeps its modal open for retry, so only remember the message; ondismiss settles.
+      rzp.on('payment.failed', () => { failMsg = 'Payment failed.'; });
       rzp.open();
     } catch (err) {
+      if (orderId) await paymentService.failOrder(orderId).catch(() => undefined);
       finish({ type: 'error', text: errText(err, 'Could not start payment.') });
     }
   };
