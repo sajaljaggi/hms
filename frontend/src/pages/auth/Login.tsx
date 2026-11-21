@@ -110,12 +110,12 @@ export default function Login() {
 
             {/* Email */}
             <div>
-              <label className="block text-sm font-medium text-gray-700">Email address</label>
+              <label htmlFor="login-email" className="block text-sm font-medium text-gray-700">Email address</label>
               <div className="mt-1 relative rounded-md shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Mail className="h-5 w-5 text-gray-400" />
                 </div>
-                <input type="email" required value={email} onChange={e => setEmail(e.target.value)}
+                <input id="login-email" type="email" required value={email} onChange={e => setEmail(e.target.value)}
                   className="focus:ring-teal-500 focus:border-teal-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md py-2 px-3 border"
                   placeholder="you@example.com" />
               </div>
@@ -123,12 +123,12 @@ export default function Login() {
 
             {/* Password */}
             <div>
-              <label className="block text-sm font-medium text-gray-700">Password</label>
+              <label htmlFor="login-password" className="block text-sm font-medium text-gray-700">Password</label>
               <div className="mt-1 relative rounded-md shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Lock className="h-5 w-5 text-gray-400" />
                 </div>
-                <input type="password" required value={password} onChange={e => setPassword(e.target.value)}
+                <input id="login-password" type="password" required value={password} onChange={e => setPassword(e.target.value)}
                   className="focus:ring-teal-500 focus:border-teal-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md py-2 px-3 border"
                   placeholder="••••••••" />
               </div>

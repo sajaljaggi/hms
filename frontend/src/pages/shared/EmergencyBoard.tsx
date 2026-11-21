@@ -3,10 +3,11 @@ import { Siren } from 'lucide-react';
 import { emergencyService } from '../../services/emergencyService';
 import { bedService } from '../../services/bedService';
 import { patientService } from '../../services/patientService';
+import PatientPicker from '../../components/PatientPicker';
 import { getErrorMessage } from '../../utils/getErrorMessage';
 import { canTransition, suggestEsiLevel } from '../../utils/triage';
 import type {
-  ArrivalMode, Bed, CreateEmergencyCaseBody, EmergencyCase, EmergencyStats, EmergencyStatus, Gender, TriageLevel,
+  ArrivalMode, Bed, CreateEmergencyCaseBody, EmergencyCase, EmergencyStats, EmergencyStatus, Gender, PatientSearchResult, TriageLevel,
 } from '../../types/modules';
 
 const POLL_MS = 30_000;
@@ -37,6 +38,8 @@ export default function EmergencyBoard() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [override, setOverride] = useState<TriageLevel | null>(null);
+  // Admission needs a registered patient, so the arrival can be linked to one up front.
+  const [patient, setPatient] = useState<PatientSearchResult | null>(null);
 
   const [admitFor, setAdmitFor] = useState<number | null>(null);
   const [freeBeds, setFreeBeds] = useState<Bed[]>([]);
@@ -94,7 +97,7 @@ export default function EmergencyBoard() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const body: CreateEmergencyCaseBody = {
-      patientName: form.patientName.trim(), chiefComplaint: form.chiefComplaint.trim(), arrivalMode: form.arrivalMode,
+      patientId: patient?.id, patientName: form.patientName.trim() || undefined, chiefComplaint: form.chiefComplaint.trim(), arrivalMode: form.arrivalMode,
       age: num(form.age), gender: form.gender || undefined, contactPhone: form.contactPhone.trim() || undefined,
       requiresImmediateIntervention: form.immediate, highRisk: form.highRisk, expectedResources: Number(form.resources) || 0,
       heartRate: num(form.heartRate), respRate: num(form.respRate), spo2: num(form.spo2),
@@ -104,6 +107,7 @@ export default function EmergencyBoard() {
     if (await act('create', () => emergencyService.createCase(body), 'Failed to register arrival')) {
       setForm(EMPTY);
       setOverride(null);
+      setPatient(null);
       setShowForm(false);
     }
   };
@@ -164,7 +168,8 @@ export default function EmergencyBoard() {
 
       {showForm && (
         <form onSubmit={submit} aria-label="New arrival" className="bg-white border border-gray-200 rounded-lg p-4 grid md:grid-cols-3 gap-3">
-          <label className="text-sm">Patient name<input required className={`${input} w-full mt-1`} {...field('patientName')} /></label>
+          <div className="md:col-span-3"><PatientPicker label="Registered patient (required to admit)" value={patient} onChange={setPatient} /></div>
+          <label className="text-sm">Patient name{patient && ' (optional)'}<input required={!patient} className={`${input} w-full mt-1`} {...field('patientName')} /></label>
           <label className="text-sm">Age<input type="number" min={0} className={`${input} w-full mt-1`} {...field('age')} /></label>
           <label className="text-sm">Gender
             <select className={`${input} w-full mt-1`} {...field('gender')}>

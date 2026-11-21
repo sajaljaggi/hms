@@ -96,7 +96,7 @@ export default function TeleconsultRoom() {
         )}
       </div>
       {actionError && <p role="alert" className="text-sm text-red-600 bg-red-50 rounded p-2">{actionError}</p>}
-      <div ref={container} className="h-[70vh] w-full bg-gray-900 rounded-xl overflow-hidden" />
+      <div ref={container} role="region" aria-label="Video call" className="h-[70vh] w-full bg-gray-900 rounded-xl overflow-hidden" />
     </div>
   );
 }

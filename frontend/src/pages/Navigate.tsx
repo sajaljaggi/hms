@@ -50,7 +50,7 @@ export default function Navigate() {
   const select = (label: string, value: string, set: (v: string) => void) => (
     <label className="flex-1 min-w-[200px] text-sm font-medium text-gray-700">
       {label}
-      <select value={value} onChange={e => set(e.target.value)} className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+      <select aria-label={label} value={value} onChange={e => set(e.target.value)} className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
         <option value="">Select location</option>
         {byFloor.map(([floor, ls]) => (
           <optgroup key={floor} label={`Floor ${floor}`}>

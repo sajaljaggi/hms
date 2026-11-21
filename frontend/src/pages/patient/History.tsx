@@ -202,7 +202,7 @@ export default function History() {
 
       <div className="space-y-4">
         {filtered.map(appt => (
-          <div key={appt.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+          <article key={appt.id} aria-label={`${appt.specialization} with ${appt.doctor_name} on ${formatDbDate(appt.date)}`} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
             <div className="flex flex-wrap justify-between items-start gap-4">
               <div>
                 <p className="font-semibold text-gray-900 text-base">{appt.specialization}</p>
@@ -269,7 +269,7 @@ export default function History() {
                 />
               </div>
             )}
-          </div>
+          </article>
         ))}
       </div>
     </div>

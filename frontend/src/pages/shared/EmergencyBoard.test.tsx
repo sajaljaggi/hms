@@ -10,7 +10,7 @@ import type { EmergencyCase } from '../../types/modules';
 vi.mock('../../services/emergencyService', () => ({
   emergencyService: { getCases: vi.fn(), getStats: vi.fn(), createCase: vi.fn(), updateCase: vi.fn(), admit: vi.fn() },
 }));
-vi.mock('../../services/bedService', () => ({ bedService: { getBeds: vi.fn() } }));
+vi.mock('../../services/bedService', () => ({ bedService: { getBeds: vi.fn(), searchPatients: vi.fn() } }));
 vi.mock('../../services/patientService', () => ({ patientService: { getDoctors: vi.fn() } }));
 
 const svc = vi.mocked(emergencyService);
@@ -84,6 +84,18 @@ describe('EmergencyBoard', () => {
       patientName: 'New Person', chiefComplaint: 'Chest pain', triageLevel: 4, expectedResources: 2, heartRate: 120,
       requiresImmediateIntervention: true, highRisk: true,
     }));
+  });
+
+  it('links a registered patient so the case can later be admitted', async () => {
+    svc.createCase.mockResolvedValue({ data: { success: true, data: { id: 9, triageLevel: 1, suggestedLevel: 1 } } } as never);
+    vi.mocked(bedService.searchPatients).mockResolvedValue({ data: { success: true, data: [{ id: 42, name: 'Reg Patient', email: 'r@x.com', phone: null }] } } as never);
+    render(<EmergencyBoard />);
+    await userEvent.click(await screen.findByRole('button', { name: 'New arrival' }));
+    await userEvent.type(screen.getByLabelText(/Registered patient/), 'Reg');
+    await userEvent.click(await screen.findByRole('option', { name: /Reg Patient/ }));
+    await userEvent.type(screen.getByLabelText('Chief complaint'), 'Collapse');
+    await userEvent.click(screen.getByRole('button', { name: 'Register arrival' }));
+    expect(svc.createCase).toHaveBeenCalledWith(expect.objectContaining({ patientId: 42, patientName: undefined, chiefComplaint: 'Collapse' }));
   });
 
   it('refetches beds and clears the selection after a failed admit', async () => {
