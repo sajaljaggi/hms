@@ -34,7 +34,9 @@ async function flushTestCache() {
 }
 
 async function setupTestDb() {
-  const { DB_HOST, DB_USER, DB_PASSWORD, DB_NAME } = process.env;
+  const { DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME } = process.env;
+  // Same server the tests use (config/db.js reads DB_PORT too).
+  const port = DB_PORT ? parseInt(DB_PORT, 10) : undefined;
 
   if (!DB_NAME || !DB_NAME.toLowerCase().includes('test')) {
     throw new Error(
@@ -43,13 +45,14 @@ async function setupTestDb() {
     );
   }
 
-  const rootConn = await mysql.createConnection({ host: DB_HOST, user: DB_USER, password: DB_PASSWORD });
+  const rootConn = await mysql.createConnection({ host: DB_HOST, port, user: DB_USER, password: DB_PASSWORD });
   await rootConn.query(`DROP DATABASE IF EXISTS \`${DB_NAME}\``);
   await rootConn.query(`CREATE DATABASE \`${DB_NAME}\``);
   await rootConn.end();
 
   const conn = await mysql.createConnection({
     host: DB_HOST,
+    port,
     user: DB_USER,
     password: DB_PASSWORD,
     database: DB_NAME,
