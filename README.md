@@ -170,6 +170,7 @@ cd backend
 npm install
 cp .env.example .env        # fill in JWT_SECRET, JWT_REFRESH_SECRET, GEMINI_API_KEY
 npm run db:migrate          # creates the schema on your local MySQL instance
+npm run db:seed-demo        # optional: fills it with demo patients, appointments, beds, blood stock (runs once)
 npm run dev                 # http://localhost:5001 (PORT in .env; the Vite proxy expects 5001)
 
 # Frontend (separate terminal)
