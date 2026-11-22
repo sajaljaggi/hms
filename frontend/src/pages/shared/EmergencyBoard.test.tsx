@@ -5,24 +5,30 @@ import EmergencyBoard from './EmergencyBoard';
 import { emergencyService } from '../../services/emergencyService';
 import { bedService } from '../../services/bedService';
 import { patientService } from '../../services/patientService';
+import { useAuth } from '../../context/useAuth';
 import type { EmergencyCase } from '../../types/modules';
 
 vi.mock('../../services/emergencyService', () => ({
-  emergencyService: { getCases: vi.fn(), getStats: vi.fn(), createCase: vi.fn(), updateCase: vi.fn(), admit: vi.fn() },
+  emergencyService: { getCases: vi.fn(), getStats: vi.fn(), createCase: vi.fn(), updateCase: vi.fn(), admit: vi.fn(), requestBed: vi.fn() },
 }));
 vi.mock('../../services/bedService', () => ({ bedService: { getBeds: vi.fn(), searchPatients: vi.fn() } }));
 vi.mock('../../services/patientService', () => ({ patientService: { getDoctors: vi.fn() } }));
+vi.mock('../../context/useAuth', () => ({ useAuth: vi.fn() }));
 
 const svc = vi.mocked(emergencyService);
 const kase = (id: number, status: EmergencyCase['status'], over: Partial<EmergencyCase> = {}): EmergencyCase => ({
   id, patient_id: null, patient_name: `Patient ${id}`, age: 30, gender: null, contact_phone: null, chief_complaint: 'Pain',
   arrival_mode: 'walk_in', triage_level: 3, heart_rate: null, resp_rate: null, bp_systolic: null, bp_diastolic: null, spo2: null,
   temperature: null, status, assigned_doctor_id: null, bed_allocation_id: null, created_by: null, arrived_at: '', closed_at: null,
-  assigned_doctor_name: null, wait_minutes: 12, ...over,
+  assigned_doctor_name: null, wait_minutes: 12, bed_request_id: null, ...over,
 });
+
+const asRole = (role: 'admin' | 'doctor') =>
+  vi.mocked(useAuth).mockReturnValue({ user: { id: 1, name: 'U', email: 'u@x', role }, role } as never);
 
 beforeEach(() => {
   vi.resetAllMocks();
+  asRole('admin');
   svc.getCases.mockResolvedValue({ data: { success: true, data: [kase(1, 'waiting'), kase(2, 'in_treatment', { assigned_doctor_id: 3, assigned_doctor_name: 'Dr Who' })] } } as never);
   svc.getStats.mockResolvedValue({ data: { success: true, data: { active: 2, waiting: 1, inTreatment: 1, byTriageLevel: { 1: 0, 2: 1, 3: 1, 4: 0, 5: 0 }, avgWaitMinutes: 12, admittedToday: 0 } } } as never);
   svc.updateCase.mockResolvedValue({ data: { success: true } } as never);
@@ -107,5 +113,18 @@ describe('EmergencyBoard', () => {
     expect(await screen.findByText('Bed already taken')).toBeInTheDocument();
     expect(bedService.getBeds).toHaveBeenCalledTimes(2);
     expect(screen.getByLabelText('Bed')).toHaveValue('');
+  });
+
+  it('doctors request a bed instead of admitting, and see when one is pending', async () => {
+    asRole('doctor');
+    svc.getCases.mockResolvedValue({ data: { success: true, data: [kase(1, 'waiting'), kase(2, 'in_treatment', { bed_request_id: 5 })] } } as never);
+    svc.requestBed.mockResolvedValue({ data: { success: true } } as never);
+    render(<EmergencyBoard />);
+    const waiting = await screen.findByTestId('case-1');
+    expect(within(waiting).queryByRole('button', { name: 'Admit' })).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('case-2')).getByText('Bed requested')).toBeInTheDocument();
+    await userEvent.click(within(waiting).getByRole('button', { name: 'Request bed' }));
+    expect(svc.requestBed).toHaveBeenCalledWith(1);
+    expect(svc.admit).not.toHaveBeenCalled();
   });
 });

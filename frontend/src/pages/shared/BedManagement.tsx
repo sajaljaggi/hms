@@ -3,6 +3,7 @@ import { BedDouble, Plus } from 'lucide-react';
 import { bedService } from '../../services/bedService';
 import { useAuth } from '../../context/useAuth';
 import PatientPicker from '../../components/PatientPicker';
+import { BedRequestsTab, MyPatientsTab } from './BedRequests';
 import { getErrorMessage } from '../../utils/getErrorMessage';
 import type { Bed, BedStats, BedStatus, PatientSearchResult, Ward, WardType } from '../../types/modules';
 
@@ -15,9 +16,14 @@ const STATUS_STYLE: Record<BedStatus, string> = {
 const WARD_TYPES: WardType[] = ['general', 'icu', 'emergency', 'maternity', 'pediatric', 'private'];
 const SETTABLE: Exclude<BedStatus, 'occupied'>[] = ['available', 'maintenance', 'reserved'];
 
+// Only the admin assigns and discharges. Doctors see availability, their admitted patients, and their requests.
+type Tab = 'beds' | 'requests' | 'my patients';
+
 export default function BedManagement() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const tabs: Tab[] = isAdmin ? ['beds', 'requests'] : ['my patients', 'requests'];
+  const [tab, setTab] = useState<Tab>(tabs[0]);
 
   const [wards, setWards] = useState<Ward[]>([]);
   const [stats, setStats] = useState<BedStats | null>(null);
@@ -40,21 +46,22 @@ export default function BedManagement() {
       const [w, s, b] = await Promise.all([
         bedService.getWards(),
         bedService.getStats(),
-        bedService.getBeds({
+        // Who is in which bed is the admin's view only.
+        isAdmin ? bedService.getBeds({
           wardId: wardFilter ? Number(wardFilter) : undefined,
           status: statusFilter || undefined,
-        }),
+        }) : Promise.resolve(null),
       ]);
       setWards(w.data.data);
       setStats(s.data.data);
-      setBeds(b.data.data);
+      if (b) setBeds(b.data.data);
       setError('');
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to load beds'));
     } finally {
       setLoading(false);
     }
-  }, [wardFilter, statusFilter]);
+  }, [wardFilter, statusFilter, isAdmin]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -144,6 +151,19 @@ export default function BedManagement() {
         </div>
       )}
 
+      <div role="tablist" className="flex gap-2 border-b border-gray-200">
+        {tabs.map((t) => (
+          <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}
+            className={`px-4 py-2 text-sm font-medium capitalize border-b-2 -mb-px ${tab === t ? 'border-teal-600 text-teal-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'requests' && <BedRequestsTab isAdmin={isAdmin} userId={user?.id} wards={wards} onChange={load} />}
+      {tab === 'my patients' && <MyPatientsTab />}
+
+      {tab === 'beds' && isAdmin && <>
       <div className="flex flex-wrap gap-3">
         <select aria-label="Ward filter" className={input} value={wardFilter} onChange={(e) => setWardFilter(e.target.value)}>
           <option value="">All wards</option>
@@ -184,6 +204,8 @@ export default function BedManagement() {
           </div>
         ))}
       </div>
+
+      </>}
 
       {allocBed && (
         <div role="dialog" aria-label="Allocate bed" className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">

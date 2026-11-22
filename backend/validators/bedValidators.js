@@ -30,7 +30,26 @@ const allocateBedSchema = z.object({
 
 const patientSearchQuerySchema = z.object({ q: z.string().trim().min(2).max(100) });
 
+const WARD_TYPES = ['general', 'icu', 'emergency', 'maternity', 'pediatric', 'private'];
+const urgency = z.enum(['routine', 'urgent', 'emergency']).default('routine');
+const reason = emptyToUndefined(z.string().trim().max(500).optional());
+
+// A doctor asks for a bed for a patient, or for the discharge of one of their admitted patients.
+const createBedRequestSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('admission'), patientId: idParam, wardType: emptyToUndefined(z.enum(WARD_TYPES).optional()), urgency, reason }),
+  z.object({ type: z.literal('discharge'), allocationId: idParam, urgency, reason }),
+]);
+
+const listBedRequestsQuerySchema = z.object({
+  status: emptyToUndefined(z.enum(['pending', 'fulfilled', 'rejected', 'cancelled']).optional()),
+});
+
+// bedId is required for an admission request; the controller checks it against the request's type.
+const fulfillBedRequestSchema = z.object({ bedId: emptyToUndefined(idParam.optional()) });
+const rejectBedRequestSchema = z.object({ notes: emptyToUndefined(z.string().trim().max(500).optional()) });
+
 module.exports = {
   idParamsSchema, createWardSchema, createBedSchema, listBedsQuerySchema,
-  bedStatusSchema, allocateBedSchema, patientSearchQuerySchema,
+  bedStatusSchema, allocateBedSchema, patientSearchQuerySchema, WARD_TYPES,
+  createBedRequestSchema, listBedRequestsQuerySchema, fulfillBedRequestSchema, rejectBedRequestSchema,
 };

@@ -1,7 +1,7 @@
 import api from './api';
 import type {
   ApiOk, CreateEmergencyCaseBody, CreateEmergencyCaseResult, EmergencyCase, EmergencyCaseFilter, EmergencyStats,
-  UpdateEmergencyCaseBody,
+  UpdateEmergencyCaseBody, WardType,
 } from '../types/modules';
 
 export const emergencyService = {
@@ -18,6 +18,10 @@ export const emergencyService = {
 
   updateCase: (id: number, body: UpdateEmergencyCaseBody) =>
     api.patch<ApiOk>(`/emergency/cases/${id}`, body),
+
+  // Doctors: ask the admin for a bed for this case (sent as an emergency bed request).
+  requestBed: (id: number, body: { wardType?: WardType; reason?: string } = {}) =>
+    api.post<ApiOk>(`/emergency/cases/${id}/request-bed`, body),
 
   admit: (id: number, bedId: number) =>
     api.post<{ success: true; data: { allocationId: number } }>(`/emergency/cases/${id}/admit`, { bedId }),

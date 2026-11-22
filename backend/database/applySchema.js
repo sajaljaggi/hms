@@ -15,6 +15,7 @@ const SQL_FILES = [
   'migration_teleconsult.sql',
   'migration_navigation.sql',
   'migration_hardening.sql',
+  'migration_bed_requests.sql',
 ];
 
 // MySQL error codes that mean "this exact change already happened" — safe

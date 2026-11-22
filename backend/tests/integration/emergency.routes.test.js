@@ -92,7 +92,8 @@ describe('emergency routes', () => {
 
   test('admit allocates the bed, then a second admit is 409; stats reflect it', async () => {
     const { body: { data: { id } } } = await mk({ patientId: patient.userId, triageLevel: 2 });
-    const res = await post(`/api/emergency/cases/${id}/admit`, doctor, { bedId });
+    expect((await post(`/api/emergency/cases/${id}/admit`, doctor, { bedId })).status).toBe(403); // doctors request instead
+    const res = await post(`/api/emergency/cases/${id}/admit`, admin, { bedId });
     expect(res.status).toBe(200);
     const [[bed]] = await db.query('SELECT status FROM beds WHERE id = ?', [bedId]);
     expect(bed.status).toBe('occupied');

@@ -84,12 +84,14 @@ const updateBedStatus = async (req, res, next) => {
 const allocate = async (req, res, next) => {
   try {
     const { patientId, reason } = req.body;
-    const { allocationId } = await inTransaction((conn) =>
+    const { allocationId, request } = await inTransaction((conn) =>
       allocateBed(conn, { bedId: req.params.id, patientId, reason, allocatedBy: req.user.id })
     );
     await notifyUsers([patientId], {
       type: 'bed', title: 'Admitted', message: 'A bed has been allocated to you.',
     });
+    // This also answered a doctor's pending bed request.
+    if (request) await notifyUsers([request.requested_by], { type: 'bed', title: 'Bed assigned', message: 'Your patient was assigned a bed.', link: '/doctor/beds' });
     res.status(201).json({ success: true, data: { allocationId } });
   } catch (err) { next(err); }
 };
@@ -97,7 +99,8 @@ const allocate = async (req, res, next) => {
 // POST /api/beds/allocations/:id/discharge
 const discharge = async (req, res, next) => {
   try {
-    await inTransaction((conn) => dischargeAllocation(conn, req.params.id));
+    const { request } = await inTransaction((conn) => dischargeAllocation(conn, req.params.id, req.user.id));
+    if (request) await notifyUsers([request.requested_by], { type: 'bed', title: 'Patient discharged', message: 'Your patient was discharged.', link: '/doctor/beds' });
     res.json({ success: true });
   } catch (err) { next(err); }
 };

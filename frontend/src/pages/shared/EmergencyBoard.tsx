@@ -4,6 +4,7 @@ import { emergencyService } from '../../services/emergencyService';
 import { bedService } from '../../services/bedService';
 import { patientService } from '../../services/patientService';
 import PatientPicker from '../../components/PatientPicker';
+import { useAuth } from '../../context/useAuth';
 import { getErrorMessage } from '../../utils/getErrorMessage';
 import { canAdmit, canTransition, suggestEsiLevel } from '../../utils/triage';
 import type {
@@ -28,6 +29,9 @@ const EMPTY = {
 interface Doctor { id: number; name: string; specialization: string }
 
 export default function EmergencyBoard() {
+  // Only the admin assigns a bed; a doctor sends an emergency bed request instead.
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [cases, setCases] = useState<EmergencyCase[]>([]);
   const [stats, setStats] = useState<EmergencyStats | null>(null);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -242,7 +246,11 @@ export default function EmergencyBoard() {
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap gap-1.5">
                         {canTransition(c.status, 'in_treatment') && <button type="button" disabled={busy} className={`${btn} bg-teal-600 text-white`} onClick={() => setStatus(c, 'in_treatment')}>Start treatment</button>}
-                        {canAdmit(c.status) && <button type="button" disabled={busy} className={`${btn} bg-blue-600 text-white`} onClick={() => openAdmit(c)}>Admit</button>}
+                        {canAdmit(c.status) && isAdmin && <button type="button" disabled={busy} className={`${btn} bg-blue-600 text-white`} onClick={() => openAdmit(c)}>Admit</button>}
+                        {canAdmit(c.status) && !isAdmin && (c.bed_request_id
+                          ? <span className="text-xs font-medium px-2 py-1 rounded-full bg-amber-100 text-amber-800">Bed requested</span>
+                          : <button type="button" disabled={busy} className={`${btn} bg-blue-600 text-white`}
+                              onClick={() => act(`request-${c.id}`, () => emergencyService.requestBed(c.id), 'Failed to request a bed')}>Request bed</button>)}
                         {canTransition(c.status, 'discharged') && <button type="button" disabled={busy} className={`${btn} border border-gray-300`} onClick={() => setStatus(c, 'discharged')}>Discharge</button>}
                         {canTransition(c.status, 'transferred') && <button type="button" disabled={busy} className={`${btn} border border-gray-300`} onClick={() => setStatus(c, 'transferred')}>Transfer</button>}
                       </div>

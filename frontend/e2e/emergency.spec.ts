@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { fx, login, loginInNewContext, pickPatient } from './helpers';
 
-test('doctor triages an ESI-1 arrival to the top, admin is alerted, doctor treats and admits', async ({ page, browser }) => {
+test('doctor triages an ESI-1 arrival to the top, admin is alerted, doctor requests a bed and the admin assigns it', async ({ page, browser }) => {
   const f = fx();
   await login(page, 'doctor');
   await page.goto('/doctor/emergency');
@@ -41,14 +41,24 @@ test('doctor triages an ESI-1 arrival to the top, admin is alerted, doctor treat
   const kase = rows.filter({ hasText: f.traumaPatient.name });
   await kase.getByRole('button', { name: 'Start treatment' }).click();
   await expect(kase).toContainText('in treatment');
-  await kase.getByRole('button', { name: 'Admit' }).click();
-  await kase.getByLabel('Bed').selectOption({ label: 'E2E Ward / E2E-ER' });
-  await kase.getByRole('button', { name: 'Confirm admit' }).click();
-  await expect(kase).toHaveCount(0); // admitted cases leave the active board
+  // Doctors do not pick beds: they request one, and the admin assigns it from the bed requests.
+  await expect(kase.getByRole('button', { name: 'Admit' })).toHaveCount(0);
+  await kase.getByRole('button', { name: 'Request bed' }).click();
+  await expect(kase.getByText('Bed requested')).toBeVisible();
 
+  const adminPage = await loginInNewContext(browser, 'admin');
+  await adminPage.goto('/admin/beds');
+  await adminPage.getByRole('tab', { name: 'requests' }).click();
+  const request = adminPage.getByTestId(/^bed-request-\d+$/).filter({ hasText: f.traumaPatient.name });
+  await expect(request).toContainText('emergency');
+  await request.getByLabel(`Bed for ${f.traumaPatient.name}`).selectOption({ label: 'E2E Ward / E2E-ER' });
+  await request.getByRole('button', { name: 'Assign bed' }).click();
+  await expect(request).toContainText('fulfilled');
+  await adminPage.context().close();
+
+  await page.reload();
+  await expect(rows.filter({ hasText: f.traumaPatient.name })).toHaveCount(0); // admitted cases leave the active board
   await page.goto('/doctor/beds');
-  await page.getByLabel('Ward filter').selectOption({ label: 'E2E Ward' });
-  const bed = page.getByTestId(/^bed-\d+$/).filter({ hasText: 'E2E-ER' });
-  await expect(bed).toContainText('occupied');
-  await expect(bed).toContainText(f.traumaPatient.name);
+  await expect(page.getByText(f.traumaPatient.name)).toBeVisible(); // the doctor's admitted patients
+  await expect(page.getByText('E2E Ward / E2E-ER')).toBeVisible();
 });

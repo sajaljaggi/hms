@@ -42,5 +42,9 @@ const listCasesQuerySchema = z.object({
 });
 
 const admitSchema = z.object({ bedId: idParam });
+const requestBedSchema = z.object({
+  wardType: emptyToUndefined(z.enum(['general', 'icu', 'emergency', 'maternity', 'pediatric', 'private']).optional()),
+  reason: emptyToUndefined(z.string().trim().max(500).optional()),
+});
 
-module.exports = { idParamsSchema, createCaseSchema, updateCaseSchema, listCasesQuerySchema, admitSchema };
+module.exports = { idParamsSchema, createCaseSchema, updateCaseSchema, listCasesQuerySchema, admitSchema, requestBedSchema };

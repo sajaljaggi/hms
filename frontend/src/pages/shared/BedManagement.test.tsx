@@ -4,12 +4,13 @@ import userEvent from '@testing-library/user-event';
 import BedManagement from './BedManagement';
 import { bedService } from '../../services/bedService';
 import { useAuth } from '../../context/useAuth';
-import type { Bed } from '../../types/modules';
+import type { Bed, BedRequest } from '../../types/modules';
 
 vi.mock('../../services/bedService', () => ({
   bedService: {
     getWards: vi.fn(), getStats: vi.fn(), getBeds: vi.fn(), searchPatients: vi.fn(), allocate: vi.fn(),
     discharge: vi.fn(), createWard: vi.fn(), createBed: vi.fn(), updateStatus: vi.fn(),
+    getRequests: vi.fn(), createRequest: vi.fn(), fulfillRequest: vi.fn(), rejectRequest: vi.fn(), cancelRequest: vi.fn(), getMyPatients: vi.fn(),
   },
 }));
 vi.mock('../../context/useAuth', () => ({ useAuth: vi.fn() }));
@@ -34,6 +35,17 @@ beforeEach(() => {
   svc.searchPatients.mockResolvedValue({ data: { success: true, data: [{ id: 7, name: 'Pat Doe', email: 'pat@x', phone: null }] } } as never);
   svc.allocate.mockResolvedValue({ data: { success: true, data: { allocationId: 1 } } } as never);
   svc.discharge.mockResolvedValue({ data: { success: true } } as never);
+  svc.getRequests.mockResolvedValue({ data: { success: true, data: [] } } as never);
+  svc.getMyPatients.mockResolvedValue({ data: { success: true, data: [] } } as never);
+  svc.createRequest.mockResolvedValue({ data: { success: true, data: { id: 1 } } } as never);
+  svc.fulfillRequest.mockResolvedValue({ data: { success: true, data: { allocationId: 3 } } } as never);
+  svc.rejectRequest.mockResolvedValue({ data: { success: true } } as never);
+});
+
+const req = (id: number, over: Partial<BedRequest> = {}): BedRequest => ({
+  id, request_type: 'admission', patient_id: 7, requested_by: 1, ward_type: null, allocation_id: null, emergency_case_id: null,
+  urgency: 'routine', status: 'pending', reason: null, admin_notes: null, created_at: '2030-01-01T10:00:00Z', resolved_at: null,
+  patient_name: 'Pat Doe', requester_name: 'Dr Who', bed_number: null, ward_name: null, ...over,
 });
 
 describe('BedManagement', () => {
@@ -45,7 +57,7 @@ describe('BedManagement', () => {
   });
 
   it('allocates a searched patient with the reason', async () => {
-    asRole('doctor');
+    asRole('admin');
     render(<BedManagement />);
     await userEvent.click(await screen.findByRole('button', { name: 'Allocate' }));
     const dialog = screen.getByRole('dialog', { name: 'Allocate bed' });
@@ -59,7 +71,7 @@ describe('BedManagement', () => {
   });
 
   it('shows an allocate failure inside the dialog', async () => {
-    asRole('doctor');
+    asRole('admin');
     svc.allocate.mockRejectedValue({ response: { data: { message: 'Bed is no longer available' } } });
     render(<BedManagement />);
     await userEvent.click(await screen.findByRole('button', { name: 'Allocate' }));
@@ -72,7 +84,7 @@ describe('BedManagement', () => {
   });
 
   it('confirms before discharging', async () => {
-    asRole('doctor');
+    asRole('admin');
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
     render(<BedManagement />);
     const btn = await screen.findByRole('button', { name: 'Discharge' });
@@ -99,5 +111,56 @@ describe('BedManagement', () => {
     expect(screen.queryByRole('button', { name: /Add ward/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Add bed/ })).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Set status for/)).not.toBeInTheDocument();
+  });
+
+  it("doctor never loads the bed grid; sees their admitted patients and asks for a discharge", async () => {
+    asRole('doctor');
+    svc.getMyPatients.mockResolvedValue({ data: { success: true, data: [
+      { allocation_id: 9, patient_id: 4, patient_name: 'Occupant Olive', admitted_at: '2030-01-01T10:00:00Z', reason: null, bed_number: 'B2', ward_name: 'ICU', ward_type: 'icu', discharge_request_id: null },
+      { allocation_id: 10, patient_id: 5, patient_name: 'Second Sam', admitted_at: '2030-01-01T10:00:00Z', reason: null, bed_number: 'B4', ward_name: 'ICU', ward_type: 'icu', discharge_request_id: 3 },
+    ] } } as never);
+    const prompt = vi.spyOn(window, 'prompt').mockReturnValue('Recovered');
+    render(<BedManagement />);
+    expect(await screen.findByText('Occupant Olive')).toBeInTheDocument();
+    expect(svc.getBeds).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Allocate' })).not.toBeInTheDocument();
+    expect(screen.getByText('Discharge requested')).toBeInTheDocument(); // Second Sam
+    await userEvent.click(screen.getByRole('button', { name: 'Request discharge' }));
+    expect(svc.createRequest).toHaveBeenCalledWith({ type: 'discharge', allocationId: 9, reason: 'Recovered' });
+    prompt.mockRestore();
+  });
+
+  it('doctor requests a bed for a patient', async () => {
+    asRole('doctor');
+    render(<BedManagement />);
+    await userEvent.click(await screen.findByRole('tab', { name: 'requests' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Request a bed' }));
+    const form = screen.getByRole('form', { name: 'New bed request' });
+    await userEvent.type(within(form).getByPlaceholderText(/search by name/i), 'pat');
+    await userEvent.click(await within(form).findByRole('option', { name: /Pat Doe/ }));
+    await userEvent.selectOptions(within(form).getByLabelText('Preferred ward type'), 'icu');
+    await userEvent.selectOptions(within(form).getByLabelText('Urgency'), 'urgent');
+    await userEvent.click(within(form).getByRole('button', { name: 'Send request' }));
+    expect(svc.createRequest).toHaveBeenCalledWith({ type: 'admission', patientId: 7, wardType: 'icu', urgency: 'urgent', reason: undefined });
+  });
+
+  it('admin assigns a free bed to a request (preferred ward type first) or rejects it with a reason', async () => {
+    asRole('admin');
+    svc.getWards.mockResolvedValue({ data: { success: true, data: [{ id: 1, name: 'Gen', ward_type: 'general' }, { id: 2, name: 'ICU', ward_type: 'icu' }] } } as never);
+    svc.getBeds.mockResolvedValue({ data: { success: true, data: [bed(1, { ward_name: 'Gen' }), bed(5, { ward_id: 2, ward_name: 'ICU' })] } } as never);
+    svc.getRequests.mockResolvedValue({ data: { success: true, data: [req(20, { ward_type: 'icu' }), req(21, { patient_name: 'Other Ann' })] } } as never);
+    const prompt = vi.spyOn(window, 'prompt').mockReturnValue('No bed free');
+    render(<BedManagement />);
+    await userEvent.click(await screen.findByRole('tab', { name: 'requests' }));
+    const row = await screen.findByTestId('bed-request-20');
+    const select = within(row).getByLabelText('Bed for Pat Doe');
+    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['Choose a free bed', 'ICU / B5', 'Gen / B1']);
+    await userEvent.selectOptions(select, '5');
+    await userEvent.click(within(row).getByRole('button', { name: 'Assign bed' }));
+    expect(svc.fulfillRequest).toHaveBeenCalledWith(20, 5);
+
+    await userEvent.click(within(screen.getByTestId('bed-request-21')).getByRole('button', { name: 'Reject' }));
+    expect(svc.rejectRequest).toHaveBeenCalledWith(21, 'No bed free');
+    prompt.mockRestore();
   });
 });

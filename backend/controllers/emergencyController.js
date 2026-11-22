@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const { NotFoundError, ConflictError, ValidationError } = require('../utils/errors');
 const { allocateBed } = require('../services/bedService');
+const { requestAdmission } = require('../services/bedRequestService');
 const { notifyUsers, notifyRoles } = require('../services/notificationService');
 const { inTransaction } = require('../utils/transaction');
 const { suggestEsiLevel, canTransition } = require('../utils/triage');
@@ -36,6 +37,7 @@ const createCase = async (req, res, next) => {
 };
 
 const SELECT_CASE = `SELECT e.*, du.name AS assigned_doctor_name,
+    (SELECT br.id FROM bed_requests br WHERE br.emergency_case_id = e.id AND br.status = 'pending' LIMIT 1) AS bed_request_id,
     TIMESTAMPDIFF(MINUTE, e.arrived_at, COALESCE(e.closed_at, NOW())) AS wait_minutes
   FROM emergency_cases e
   LEFT JOIN doctors d ON d.id = e.assigned_doctor_id
@@ -89,6 +91,13 @@ const updateCase = async (req, res, next) => {
         if (req.body[key] !== undefined) { sets.push(`${col} = ?`); params.push(req.body[key]); }
       }
       await conn.query(`UPDATE emergency_cases SET ${sets.join(', ')} WHERE id = ?`, [...params, req.params.id]);
+      if (status === 'discharged' || status === 'transferred') {
+        await conn.query(
+          `UPDATE bed_requests SET status = 'cancelled', open_key = NULL, resolved_at = NOW(), resolved_by = ?,
+             admin_notes = 'Emergency case closed.' WHERE emergency_case_id = ? AND status = 'pending'`,
+          [req.user.id, req.params.id]
+        );
+      }
       return userId;
     });
     if (doctorUserId) {
@@ -120,6 +129,28 @@ const admit = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// POST /api/emergency/cases/:id/request-bed (doctor): an emergency-urgency bed request for the case's patient.
+// The admin assigns the bed from the bed requests list, which also marks the case admitted.
+const requestBed = async (req, res, next) => {
+  try {
+    const name = await inTransaction(async (conn) => {
+      const [[c]] = await conn.query('SELECT status, patient_id, patient_name, chief_complaint FROM emergency_cases WHERE id = ? FOR UPDATE', [req.params.id]);
+      if (!c) throw new NotFoundError('Emergency case not found.');
+      if (c.status !== 'waiting' && c.status !== 'in_treatment') throw new ConflictError(`Case is already ${c.status}.`);
+      if (!c.patient_id) throw new ValidationError('Register the patient before requesting a bed.');
+      await requestAdmission(conn, {
+        patientId: c.patient_id, requestedBy: req.user.id, wardType: req.body.wardType, urgency: 'emergency',
+        reason: req.body.reason || `Emergency: ${c.chief_complaint.slice(0, 200)}`, emergencyCaseId: Number(req.params.id),
+      });
+      return c.patient_name;
+    });
+    await notifyRoles(['admin'], {
+      type: 'bed', title: 'Emergency bed request', message: `A bed is needed for emergency case #${req.params.id}${name ? ` (${name})` : ''}.`, link: '/admin/beds',
+    });
+    res.status(201).json({ success: true });
+  } catch (err) { next(err); }
+};
+
 // GET /api/emergency/stats
 const stats = async (req, res, next) => {
   try {
@@ -146,4 +177,4 @@ const stats = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { createCase, listCases, getCase, updateCase, admit, stats };
+module.exports = { requestBed, createCase, listCases, getCase, updateCase, admit, stats };

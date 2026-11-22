@@ -59,6 +59,45 @@ export interface CreateBedBody { wardId: number; bedNumber: string; dailyRate?: 
 export interface AllocateBedBody { patientId: number; reason?: string }
 export interface BedListQuery { wardId?: number; status?: BedStatus }
 
+// Doctors request beds and discharges; the admin fulfills or rejects them (like blood requests).
+export type BedRequestType = 'admission' | 'discharge';
+export type BedRequestStatus = 'pending' | 'fulfilled' | 'rejected' | 'cancelled';
+export type BedUrgency = 'routine' | 'urgent' | 'emergency';
+export interface BedRequest {
+  id: number;
+  request_type: BedRequestType;
+  patient_id: number;
+  requested_by: number | null;
+  ward_type: WardType | null;
+  allocation_id: number | null;
+  emergency_case_id: number | null;
+  urgency: BedUrgency;
+  status: BedRequestStatus;
+  reason: string | null;
+  admin_notes: string | null;
+  created_at: string;
+  resolved_at: string | null;
+  patient_name: string;
+  requester_name: string | null;
+  bed_number: string | null;
+  ward_name: string | null;
+}
+export type CreateBedRequestBody =
+  | { type: 'admission'; patientId: number; wardType?: WardType; urgency?: BedUrgency; reason?: string }
+  | { type: 'discharge'; allocationId: number; urgency?: BedUrgency; reason?: string };
+// A current admission of one of this doctor's patients.
+export interface MyPatientBed {
+  allocation_id: number;
+  patient_id: number;
+  patient_name: string;
+  admitted_at: string;
+  reason: string | null;
+  bed_number: string;
+  ward_name: string;
+  ward_type: WardType;
+  discharge_request_id: number | null;
+}
+
 // ── Blood bank ─────────────────────────────────────────────────
 export type BloodGroup = 'A+' | 'A-' | 'B+' | 'B-' | 'AB+' | 'AB-' | 'O+' | 'O-';
 export type BloodComponent = 'whole_blood' | 'packed_rbc' | 'plasma' | 'platelets';
@@ -170,6 +209,7 @@ export interface EmergencyCase {
   status: EmergencyStatus;
   assigned_doctor_id: number | null;
   bed_allocation_id: number | null;
+  bed_request_id: number | null; // a doctor's pending bed request for this case
   created_by: number | null;
   arrived_at: string;
   closed_at: string | null;

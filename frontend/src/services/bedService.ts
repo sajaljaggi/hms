@@ -1,7 +1,7 @@
 import api from './api';
 import type {
-  AllocateBedBody, ApiOk, Bed, BedListQuery, BedStats, BedStatus, CreateBedBody, CreateWardBody,
-  PatientSearchResult, Ward,
+  AllocateBedBody, ApiOk, Bed, BedListQuery, BedRequest, BedStats, BedStatus, CreateBedBody, CreateBedRequestBody,
+  CreateWardBody, MyPatientBed, PatientSearchResult, Ward,
 } from '../types/modules';
 
 export const bedService = {
@@ -30,4 +30,20 @@ export const bedService = {
 
   discharge: (allocationId: number) =>
     api.post<ApiOk>(`/beds/allocations/${allocationId}/discharge`),
+
+  // Bed and discharge requests: doctors create and cancel; the admin fulfills or rejects.
+  getRequests: () => api.get<{ success: true; data: BedRequest[] }>('/beds/requests'),
+
+  createRequest: (body: CreateBedRequestBody) =>
+    api.post<{ success: true; data: { id: number } }>('/beds/requests', body),
+
+  fulfillRequest: (id: number, bedId?: number) =>
+    api.post<{ success: true; data: { allocationId: number } }>(`/beds/requests/${id}/fulfill`, bedId ? { bedId } : {}),
+
+  rejectRequest: (id: number, notes?: string) =>
+    api.patch<ApiOk>(`/beds/requests/${id}/reject`, notes ? { notes } : {}),
+
+  cancelRequest: (id: number) => api.patch<ApiOk>(`/beds/requests/${id}/cancel`),
+
+  getMyPatients: () => api.get<{ success: true; data: MyPatientBed[] }>('/beds/my-patients'),
 };

@@ -37,9 +37,12 @@ describe('beds routes', () => {
     expect((await request(app).get('/api/beds')).status).toBe(401);
   });
 
-  test('doctor cannot create wards or change status', async () => {
+  test('doctor cannot create wards, change status, assign, discharge or see who is in which bed', async () => {
     expect((await authed(request(app).post, '/api/beds/wards', doctor).send({ name: 'x', wardType: 'icu' })).status).toBe(403);
     expect((await authed(request(app).patch, `/api/beds/${bedA}/status`, doctor).send({ status: 'maintenance' })).status).toBe(403);
+    expect((await allocate(bedA, p1, doctor)).status).toBe(403);
+    expect((await authed(request(app).post, '/api/beds/allocations/1/discharge', doctor)).status).toBe(403);
+    expect((await authed(request(app).get, '/api/beds', doctor)).status).toBe(403);
   });
 
   test('duplicate ward name -> 409; occupied status rejected by validator', async () => {
@@ -49,7 +52,7 @@ describe('beds routes', () => {
   });
 
   test('allocate -> double allocate 409 -> already admitted 409 -> occupied status 409 -> discharge -> re-allocate', async () => {
-    const r1 = await allocate(bedA, p1, doctor);
+    const r1 = await allocate(bedA, p1);
     expect(r1.status).toBe(201);
     const allocationId = r1.body.data.allocationId;
 
@@ -72,8 +75,8 @@ describe('beds routes', () => {
     expect(stats.body.data.occupied).toBeGreaterThanOrEqual(1);
     expect(stats.body.data.occupancyRate).toBeGreaterThan(0);
 
-    expect((await authed(request(app).post, `/api/beds/allocations/${allocationId}/discharge`, doctor)).status).toBe(200);
-    expect((await authed(request(app).post, `/api/beds/allocations/${allocationId}/discharge`, doctor)).status).toBe(409);
+    expect((await authed(request(app).post, `/api/beds/allocations/${allocationId}/discharge`, admin)).status).toBe(200);
+    expect((await authed(request(app).post, `/api/beds/allocations/${allocationId}/discharge`, admin)).status).toBe(409);
     expect((await allocate(bedA, p1)).status).toBe(201);
   });
 
