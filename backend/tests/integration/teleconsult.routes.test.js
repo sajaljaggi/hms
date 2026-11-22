@@ -4,7 +4,7 @@ const db = require('../../config/db');
 const { createUserSession, authed, cleanupUsers, closeTestConnections } = require('../helpers/session');
 
 describe('teleconsult routes', () => {
-  let doctor, patient, other;
+  let doctor, patient, other, otherDoctor;
   const ids = [];
   const pad = (n) => String(n).padStart(2, '0');
   const localDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -18,13 +18,16 @@ describe('teleconsult routes', () => {
   const book = (slotId, extra = {}) =>
     authed(request(app).post, '/api/appointments/book', patient).send({ doctorId: doctor.doctorId, slotId, ...extra });
   const join = (s, id) => authed(request(app).get, `/api/teleconsult/${id}/join`, s);
+  const status = (s, id) => authed(request(app).get, `/api/teleconsult/${id}/status`, s);
+  const admit = (s, id) => authed(request(app).post, `/api/teleconsult/${id}/admit`, s);
   const room = async (id) => (await db.query('SELECT video_room, consultation_type FROM appointments WHERE id = ?', [id]))[0][0];
 
   beforeAll(async () => {
     doctor = await createUserSession('doctor');
     patient = await createUserSession('patient', { name: 'Pat Ient' });
     other = await createUserSession('patient');
-    ids.push(doctor.userId, patient.userId, other.userId);
+    otherDoctor = await createUserSession('doctor');
+    ids.push(doctor.userId, patient.userId, other.userId, otherDoctor.userId);
   });
   afterAll(() => cleanupUsers(ids));
 
@@ -47,12 +50,33 @@ describe('teleconsult routes', () => {
     expect(unpaid.body.error.code).toBe('PAYMENT_REQUIRED');
 
     await db.query("UPDATE appointments SET payment_status = 'paid' WHERE id = ?", [id]);
-    const ok = await join(patient, id);
-    expect(ok.status).toBe(200);
-    expect(ok.body.data).toMatchObject({ roomName: (await room(id)).video_room, domain: 'meet.jit.si', displayName: 'Pat Ient', role: 'patient', appointmentId: id });
+    expect((await status(doctor, id)).body.data).toEqual({ admitted: false, patientWaiting: false });
+
+    // Paid patient waits: no room details until the doctor admits them.
+    const waiting = await join(patient, id);
+    expect(waiting.status).toBe(200);
+    expect(waiting.body.data).toMatchObject({ waiting: true, role: 'patient', appointmentId: id });
+    expect(waiting.body.data.roomName).toBeUndefined();
+    expect((await status(doctor, id)).body.data).toEqual({ admitted: false, patientWaiting: true });
+
     const docRes = await join(doctor, id);
     expect(docRes.status).toBe(200);
-    expect(docRes.body.data.role).toBe('doctor');
+    expect(docRes.body.data).toMatchObject({ waiting: false, role: 'doctor', roomName: (await room(id)).video_room, domain: 'meet.jit.si' });
+
+    // Only this appointment's doctor sees the waiting room or admits.
+    expect((await status(patient, id)).status).toBe(403);
+    expect((await admit(patient, id)).status).toBe(403);
+    expect((await status(otherDoctor, id)).status).toBe(404);
+    expect((await admit(otherDoctor, id)).status).toBe(404);
+    expect((await join(patient, id)).body.data.waiting).toBe(true);
+
+    expect((await admit(doctor, id)).status).toBe(200);
+    expect((await admit(doctor, id)).status).toBe(200); // idempotent
+    expect((await status(doctor, id)).body.data).toEqual({ admitted: true, patientWaiting: false });
+    const ok = await join(patient, id);
+    expect(ok.status).toBe(200);
+    expect(ok.body.data).toMatchObject({ waiting: false, roomName: (await room(id)).video_room, domain: 'meet.jit.si', displayName: 'Pat Ient', role: 'patient', appointmentId: id });
+    expect(ok.body.data.jwt).toBeUndefined();
     expect((await join(other, id)).status).toBe(404);
 
     const inPerson = (await book(await seedSlot(3))).body.appointmentId;
@@ -64,6 +88,7 @@ describe('teleconsult routes', () => {
     expect(late.status).toBe(403);
     expect(late.body.error.code).toBe('OUTSIDE_JOIN_WINDOW');
     expect(late.body.error.details.startsAt).toBeDefined();
+    expect((await admit(doctor, far)).body.error.code).toBe('OUTSIDE_JOIN_WINDOW');
 
     expect((await authed(request(app).patch, `/api/teleconsult/${id}/complete`, patient)).status).toBe(403);
     expect((await authed(request(app).patch, `/api/teleconsult/${id}/complete`, doctor)).status).toBe(200);

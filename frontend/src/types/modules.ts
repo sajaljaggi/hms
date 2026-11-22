@@ -221,14 +221,20 @@ export interface AdminPaymentRow extends PaymentRow { patient_name: string }
 export interface PaymentSummary { totalPaidPaise: number; paidCount: number; pendingCount: number }
 
 // ── Teleconsultation ───────────────────────────────────────────
-export interface TeleconsultJoinData {
-  roomName: string;
-  domain: string;
-  displayName: string;
-  role: 'doctor' | 'patient';
-  startsAt: string;
-  appointmentId: number;
-}
+interface TeleconsultBase { role: 'doctor' | 'patient'; startsAt: string; appointmentId: number }
+// A patient gets `waiting: true` (no room details) until the doctor admits them.
+export type TeleconsultJoinData =
+  | (TeleconsultBase & { waiting: true })
+  | (TeleconsultBase & {
+      waiting: false;
+      roomName: string;
+      domain: string;
+      tenant?: string; // JaaS app id; the script loads from https://8x8.vc/<tenant>/external_api.js
+      jwt?: string;
+      displayName: string;
+    });
+export type TeleconsultRoomData = Extract<TeleconsultJoinData, { waiting: false }>;
+export interface TeleconsultStatus { admitted: boolean; patientWaiting: boolean }
 
 // ── Navigation ─────────────────────────────────────────────────
 export type NavCategory = 'entrance' | 'reception' | 'department' | 'ward' | 'facility' | 'elevator' | 'stairs' | 'junction';

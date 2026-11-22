@@ -8,6 +8,8 @@ const v = require('../validators/teleconsultValidators');
 
 router.use(auth, requireRole('patient', 'doctor'));
 router.get('/:appointmentId/join', validate(v.appointmentIdParamsSchema, 'params'), c.join);
+router.get('/:appointmentId/status', requireRole('doctor'), validate(v.appointmentIdParamsSchema, 'params'), c.status);
+router.post('/:appointmentId/admit', requireRole('doctor'), validate(v.appointmentIdParamsSchema, 'params'), c.admit);
 router.patch('/:appointmentId/complete', requireRole('doctor'), validate(v.appointmentIdParamsSchema, 'params'), c.complete);
 
 module.exports = router;

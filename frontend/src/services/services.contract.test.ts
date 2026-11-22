@@ -58,6 +58,8 @@ const cases: [string, () => unknown, Method, string, unknown?][] = [
   ['payments.getAllPayments', () => paymentService.getAllPayments(3), 'get', '/payments', { params: { page: 3 } }],
 
   ['teleconsult.join', () => teleconsultService.join(12), 'get', '/teleconsult/12/join'],
+  ['teleconsult.status', () => teleconsultService.status(12), 'get', '/teleconsult/12/status'],
+  ['teleconsult.admit', () => teleconsultService.admit(12), 'post', '/teleconsult/12/admit'],
   ['teleconsult.complete', () => teleconsultService.complete(12), 'patch', '/teleconsult/12/complete'],
 
   ['navigation.getLocations', () => navigationService.getLocations({ category: 'ward' }), 'get', '/navigation/locations', { params: { category: 'ward' } }],
