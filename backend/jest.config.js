@@ -1,6 +1,7 @@
 module.exports = {
   testEnvironment: 'node',
   setupFiles: ['<rootDir>/tests/setup/testEnv.js'],
+  setupFilesAfterEnv: ['<rootDir>/tests/setup/localServer.js'],
   testTimeout: 15000,
   collectCoverageFrom: [
     'controllers/**/*.js',
