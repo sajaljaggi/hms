@@ -8,9 +8,30 @@
  */
 const path = require('path');
 const mysql = require('mysql2/promise');
+const Redis = require('ioredis');
 const { applySchema, SQL_FILES } = require('./applySchema');
 
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env.test') });
+
+// Cached slot lists from the dropped DB would answer for the new DB's reused ids, so clear them too.
+// Only a non-zero REDIS_DB is flushed: index 0 is the dev/prod cache.
+async function flushTestCache() {
+  const index = parseInt(process.env.REDIS_DB, 10);
+  if (!index) return console.warn('⚠️  REDIS_DB is not set to a test index; leaving the Redis cache alone.');
+  const redis = new Redis({
+    host: process.env.REDIS_HOST || 'localhost', port: parseInt(process.env.REDIS_PORT, 10) || 6379,
+    password: process.env.REDIS_PASSWORD || undefined, db: index, lazyConnect: true, maxRetriesPerRequest: 1,
+  });
+  redis.on('error', () => {}); // reported once below instead of on every retry
+  try {
+    await redis.connect();
+    await redis.flushdb();
+  } catch (err) {
+    console.warn(`⚠️  Could not clear test Redis DB ${index}: ${err.message}`);
+  } finally {
+    redis.disconnect();
+  }
+}
 
 async function setupTestDb() {
   const { DB_HOST, DB_USER, DB_PASSWORD, DB_NAME } = process.env;
@@ -37,6 +58,7 @@ async function setupTestDb() {
 
   await applySchema(conn);
   await conn.end();
+  await flushTestCache();
 
   console.log(`✅ Test database "${DB_NAME}" set up from ${SQL_FILES.join(', ')}.`);
 }
