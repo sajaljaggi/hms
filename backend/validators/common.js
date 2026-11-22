@@ -20,4 +20,10 @@ const looseNumber = (schema) =>
 // Route params / query strings are always strings — coerce to a positive int.
 const idParam = z.coerce.number().int().positive();
 
-module.exports = { emptyToUndefined, looseNumber, idParam };
+// Strict YYYY-MM-DD that round-trips, so impossible dates like 2026-02-31 are rejected.
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((s) => {
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+}, 'Invalid date');
+
+module.exports = { emptyToUndefined, looseNumber, idParam, isoDate };

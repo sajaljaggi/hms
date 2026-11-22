@@ -8,6 +8,8 @@ const MYSQL_ERROR_MAP = {
   ER_DUP_ENTRY:            { statusCode: 409, code: 'CONFLICT',   message: 'This record already exists.' },
   ER_NO_REFERENCED_ROW_2:  { statusCode: 400, code: 'BAD_REQUEST', message: 'Referenced record does not exist.' },
   ER_ROW_IS_REFERENCED_2:  { statusCode: 409, code: 'CONFLICT',   message: 'This record is referenced elsewhere and cannot be modified.' },
+  ER_LOCK_DEADLOCK:        { statusCode: 409, code: 'CONFLICT',   message: 'Concurrent update, please retry.' },
+  ER_LOCK_WAIT_TIMEOUT:    { statusCode: 409, code: 'CONFLICT',   message: 'Concurrent update, please retry.' },
 };
 
 function normalize(err) {

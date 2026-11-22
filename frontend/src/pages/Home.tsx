@@ -55,6 +55,7 @@ export default function Home() {
               <a href="#gallery" className="text-gray-600 hover:text-teal-600 transition">Gallery</a>
               <a href="#contact" className="text-gray-600 hover:text-teal-600 transition">Contact Us</a>
               <a href="#logins" className="text-gray-600 hover:text-teal-600 transition">Login</a>
+              <Link to="/navigate" className="text-gray-600 hover:text-teal-600 transition">Hospital Map</Link>
               <Link to="/login" state={{ role: 'patient', redirectTo: '/patient/book' }} className="bg-teal-500 hover:bg-teal-600 text-white px-5 py-2.5 shadow-sm transition">
                 Book an Appointment
               </Link>

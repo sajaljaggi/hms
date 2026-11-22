@@ -50,6 +50,7 @@ export default function BookAppointment() {
   const [error,  setError]  = useState('');
   const [booking, setBooking] = useState(false);
   const [reason,  setReason]  = useState('');
+  const [consultationType, setConsultationType] = useState<'in_person' | 'video'>('in_person');
   const [infoSpec, setInfoSpec] = useState<string | null>(null);
 
   const [doctors, setDoctors]   = useState<Doctor[]>([]);
@@ -82,7 +83,7 @@ export default function BookAppointment() {
     if (!doctor || !slot) return;
     setBooking(true); setError('');
     try {
-      await patientService.bookAppointment(doctor.id, slot.id, reason);
+      await patientService.bookAppointment(doctor.id, slot.id, reason, consultationType);
       setBooked(true);
     } catch (err) {
       setError(getErrorMessage(err, 'Booking failed. Please try again.'));
@@ -93,7 +94,7 @@ export default function BookAppointment() {
 
   const reset = () => {
     setBooked(false); setSpec(''); setDate(null); setSlot(null);
-    setDoctor(null); setDoctors([]); setSlots([]); setReason('');
+    setDoctor(null); setDoctors([]); setSlots([]); setReason(''); setConsultationType('in_person');
   };
 
   // A slot is selectable only when: not past, not booked, not blocked
@@ -199,7 +200,7 @@ export default function BookAppointment() {
                 const d = addDays(new Date(), offset);
                 const selected = date && format(date, 'yyyy-MM-dd') === format(d, 'yyyy-MM-dd');
                 return (
-                  <button key={offset} onClick={() => { setDate(d); setSlot(null); }}
+                  <button key={offset} aria-label={format(d, 'EEEE, MMMM d')} aria-pressed={!!selected} onClick={() => { setDate(d); setSlot(null); }}
                     className={`flex-shrink-0 flex flex-col items-center justify-center w-20 h-24 rounded-xl border transition-all
                       ${selected ? 'bg-teal-600 text-white border-teal-600 shadow-md scale-105' : 'bg-white border-gray-200 text-gray-700 hover:border-teal-400 hover:bg-teal-50'}`}>
                     <span className="text-xs uppercase font-medium">{format(d, 'MMM')}</span>
@@ -342,6 +343,12 @@ export default function BookAppointment() {
               <p className="text-sm text-teal-800 font-medium">Selected Consultation</p>
               <p className="text-lg font-bold text-teal-900">{doctor.name} &bull; ₹{doctor.fees}</p>
               <p className="text-sm text-teal-700">{format(date, 'MMM dd, yyyy')} &bull; {formatSlotRange(slot.time)}</p>
+            </div>
+            <div role="group" aria-label="Consultation type" className="flex rounded-lg border border-teal-300 overflow-hidden text-sm font-medium">
+              {([['in_person', 'In-person'], ['video', 'Video']] as const).map(([v, label]) => (
+                <button key={v} type="button" aria-pressed={consultationType === v} onClick={() => setConsultationType(v)}
+                  className={`px-4 py-2 ${consultationType === v ? 'bg-teal-600 text-white' : 'bg-white text-teal-800'}`}>{label}</button>
+              ))}
             </div>
             <button onClick={handleBook} disabled={booking}
               className="w-full sm:w-auto bg-teal-600 text-white py-3 px-8 rounded-lg font-bold shadow-md hover:bg-teal-700 transition disabled:opacity-60">

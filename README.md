@@ -28,6 +28,7 @@ Password for every seeded account below is **`password`**.
 
 ## Table of Contents
 - [Features](#features)
+- [Hospital Modules](#hospital-modules)
 - [Tech Stack](#tech-stack)
 - [Architecture](#architecture)
 - [Auth & Security Model](#auth--security-model)
@@ -63,6 +64,20 @@ Password for every seeded account below is **`password`**.
 - 15-minute slots, auto-generated on a rolling 14-day window, cleaned up daily via cron
 - Row-level locking (`SELECT ... FOR UPDATE`) prevents two patients double-booking the same slot under concurrent load
 - Doctor availability lookups are cached in Redis (cache-aside, invalidated immediately on any booking/cancellation/admin slot change)
+
+## Hospital Modules
+
+Seven operational modules sit on top of the scheduling core. Staff pages are shared between the doctor and admin portals (`/doctor/...` and `/admin/...`); admin-only actions are hidden for doctors.
+
+| Module | What it does | Main routes (UI → API) |
+|---|---|---|
+| Notifications | In-app bell with unread count, polled every 30 s; sent on bookings, payments, emergencies, blood requests | header bell → `/api/notifications` |
+| Payments | Razorpay Orders + checkout signature check; mock mode in development/test; webhook dedupe | `/patient/payments`, `/patient/history`, `/admin/payments` → `/api/payments` |
+| Teleconsultation | Jitsi Meet room per video appointment, joinable only when paid and inside the join window | `/consult/:appointmentId` → `/api/teleconsult` |
+| Bed management | Wards, beds, allocation and discharge with row locks | `/admin/beds`, `/doctor/beds` → `/api/beds` |
+| Blood bank | Donors, donations, FEFO stock, compatibility-checked requests | `/admin/blood`, `/doctor/blood` → `/api/blood` |
+| Emergency | ESI v4 triage board ordered by acuity then arrival, admit to a bed | `/admin/emergency`, `/doctor/emergency` → `/api/emergency` |
+| Navigation | Public hospital map, Dijkstra routing with an accessible (no-stairs) mode | `/navigate` → `/api/navigation` |
 
 ## Tech Stack
 
@@ -179,19 +194,38 @@ Seed sample doctors/slots: `node backend/seedData.js` (schema.sql already includ
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | Redis connection (optional locally) |
 | `GEMINI_API_KEY` | Google Gemini API key for the chatbot |
 | `NODE_ENV` | `production` flips cookies to `Secure; SameSite=None` for cross-site deployment |
+| `TZ` | Must be `Asia/Kolkata`. Slot `date` + `time` columns are IST wall-clock values and are parsed in the Node process timezone, so a UTC host (Render's default) would shift the teleconsult join window and the "slot has passed" check by 5.5 h. Set in `render.yaml`, `docker-compose.yml` and `backend/Dockerfile` (which installs `tzdata`) |
+| (DB session zone) | Not an env var: `config/db.js` runs `SET time_zone = '+05:30'` on every pool connection (and `applySchema` does the same), because mysql2 reads `DATETIME`/`TIMESTAMP` values as Node local time. Without it a UTC MySQL server (Aiven, the compose `mysql:8.0`) would return every `NOW()`/`CURRENT_TIMESTAMP` value 5.5 h early. Change both together with `TZ` |
+| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | Razorpay API key pair. With both empty, payments run in mock mode only under `NODE_ENV=development`/`test` or `PAYMENT_MODE=mock`. Otherwise online payment is off: `/api/payments/orders` returns 503 and **video appointments are rejected at booking (400)**, since a video room can only be joined once paid |
+| `RAZORPAY_WEBHOOK_SECRET` | The secret configured on the Razorpay webhook (not the key secret), used to verify `/api/payments/webhook` |
+| `JITSI_DOMAIN` | Jitsi server for video rooms (default `meet.jit.si`). meet.jit.si restricts IFrame embedding for third-party sites, so production should use JaaS (`8x8.vc`) or a self-hosted Jitsi domain |
 
 **`frontend/.env.example`** — one variable, `VITE_BACKEND_URL`, left **unset** in every environment that can proxy `/api` itself (local dev, docker-compose, Vercel). Only needed if deploying the frontend somewhere without a same-origin proxy option — see the [Architecture](#architecture) note on why that's a fallback, not the preferred path.
 
 ## Testing
 
+Prerequisites: Node 20+, and for integration and E2E tests a local MySQL whose credentials are in `backend/.env.test` (the test DB name must contain `test`; it is dropped and recreated). Redis is optional: the app fails open without it (only the Redis cache test needs it).
+
 ```bash
 cd backend
 npm test                 # unit tests only — mocked DB/cache, no external services needed
-npm run test:integration # real MySQL + Redis required; provisions a throwaway hms_db_test schema
+npm run test:integration # real MySQL required; provisions a throwaway hms_db_test schema
 npm run test:coverage    # coverage report for the unit suite
+
+cd frontend
+npm test                 # vitest component tests (jsdom)
+npm run test:e2e         # Playwright end-to-end tests in a real browser
 ```
 
 Unit tests cover: JWT auth middleware (valid/expired/tampered/wrong-type tokens), the booking conflict-resolution logic (double-booking rejection, back-to-back slots, past-slot rejection) via a mocked DB connection, error-handler response shaping, and SQL-migration parsing. Integration tests exercise the real HTTP layer end-to-end via Supertest, including an actual double-booking race against real row locking and the Redis cache-aside/invalidation sequence.
+
+**End-to-end (Playwright).** `frontend/e2e/` has seven specs, one per flow: booking + notification bell, mock payment, teleconsult join (the Jitsi script is stubbed), bed allocate/discharge, blood bank donation → request → fulfil, emergency triage → alert → admit, and accessible navigation. Each spec logs in through the real login form.
+
+- Uses the system Google Chrome (`channel: 'chrome'`), so no `npx playwright install` is needed.
+- Starts the backend (`npm run start:e2e`, port 5001, `NODE_ENV=test` so payments run in mock mode) and Vite (port 5173) itself, or reuses them if already running.
+- Global setup resets `hms_db_test` and seeds an admin, a doctor, two patients, appointments and a ward; the generated logins go to `frontend/e2e/.auth-fixtures.json` (git-ignored).
+- dotenv never overrides variables already set, so if your local MySQL password differs from `backend/.env.test`, pass it in: `DB_PASSWORD=<yours> npm run test:e2e`.
+- Reports: `npx playwright show-report` (traces are kept for failed tests).
 
 ## Docker / docker-compose
 
@@ -225,6 +259,7 @@ Aiven's free tier auto-powers-off after ~24h with no *database query* activity (
 - **Redis**: Render's managed Redis add-on, same account/region as the backend for low latency.
 - Both auto-deploy on every push to `main`.
 - Render's free web services have no persistent disk and no Shell access — see [Known Limitations](#known-limitations).
+- `render.yaml` sets `TZ=Asia/Kolkata` and prompts for `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` and `JITSI_DOMAIN` at import. Until the Razorpay keys are set, payments are disabled and video appointments cannot be booked (see [Environment Variables](#environment-variables)).
 
 ### 3. Frontend — [Vercel](https://vercel.com)
 Static Vite build, deployed from the `frontend/` directory. `frontend/vercel.json` rewrites `/api/*` and `/uploads/*` to the Render backend's URL server-side, which is what makes the auth cookies first-party (see the [Architecture](#architecture) section — this was the fix for a real bug where Chrome was silently discarding the backend's cookies as third-party). `VITE_BACKEND_URL` must stay **unset** in Vercel's project settings for this proxy to actually be used; setting it makes the frontend call Render directly, cross-origin, reintroducing the cookie problem.

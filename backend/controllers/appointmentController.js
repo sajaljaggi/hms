@@ -1,8 +1,11 @@
+const crypto = require('crypto');
 const db = require('../config/db');
 const { generateSlotsForDoctorDate } = require('../utils/generateSlots');
-const { NotFoundError, ConflictError, ValidationError } = require('../utils/errors');
+const { AppError, NotFoundError, ConflictError, ValidationError } = require('../utils/errors');
 const { getCache, setCache, invalidateCache, availabilityKey } = require('../utils/cache');
 const { toDateStr } = require('../utils/dates');
+const { notifyBooking } = require('../services/notificationService');
+const paymentGateway = require('../services/paymentGateway');
 
 // ─── GET /api/doctors?specialization=xxx ───────────────────────────────────
 const getDoctors = async (req, res, next) => {
@@ -64,8 +67,14 @@ const getAvailableSlots = async (req, res, next) => {
 const bookAppointment = async (req, res, next) => {
   const conn = await db.getConnection();
   try {
-    const { doctorId, slotId, reason } = req.body;
+    const { doctorId, slotId, reason, consultationType = 'in_person' } = req.body;
+    const isVideo = consultationType === 'video';
     const patientId = req.user.id;
+
+    // A video visit can only be joined once paid, so it is unbookable while payments are off.
+    if (isVideo && !paymentGateway.getMode()) {
+      throw new AppError('Video consultations are unavailable because online payment is not configured. Please book an in-person visit.', 400, 'PAYMENT_NOT_CONFIGURED');
+    }
 
     await conn.beginTransaction();
 
@@ -100,9 +109,9 @@ const bookAppointment = async (req, res, next) => {
 
     // Create appointment
     const [result] = await conn.query(
-      `INSERT INTO appointments (patient_id, doctor_id, slot_id, status, reason)
-       VALUES (?, ?, ?, 'pending', ?)`,
-      [patientId, doctorId, slotId, reason || null]
+      `INSERT INTO appointments (patient_id, doctor_id, slot_id, status, reason, consultation_type, video_room)
+       VALUES (?, ?, ?, 'pending', ?, ?, ?)`,
+      [patientId, doctorId, slotId, reason || null, consultationType, isVideo ? `hms-${crypto.randomBytes(16).toString('hex')}` : null]
     );
 
     await conn.commit();
@@ -110,6 +119,8 @@ const bookAppointment = async (req, res, next) => {
     // The cached availability list for this doctor+date is now stale —
     // this slot just flipped from available to booked.
     await invalidateCache(availabilityKey(doctorId, dateStr));
+
+    await notifyBooking({ patientId, doctorId, dateStr, time: slotRow.time, isVideo });
 
     res.status(201).json({
       success: true,

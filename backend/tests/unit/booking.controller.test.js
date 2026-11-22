@@ -13,9 +13,14 @@ jest.mock('../../utils/cache', () => ({
   availabilityKey: (doctorId, date) => `availability:${doctorId}:${date}`,
 }));
 
+jest.mock('../../services/notificationService', () => ({
+  notifyBooking: jest.fn().mockResolvedValue(undefined),
+}));
+
 const db = require('../../config/db');
+const { notifyBooking } = require('../../services/notificationService');
 const { bookAppointment } = require('../../controllers/appointmentController');
-const { NotFoundError, ConflictError, ValidationError } = require('../../utils/errors');
+const { AppError, NotFoundError, ConflictError, ValidationError } = require('../../utils/errors');
 
 // Builds a fresh mock connection per test — mirrors what mysql2's
 // pool.getConnection() returns, but with jest.fn() query results we control.
@@ -29,8 +34,8 @@ function mockConnection() {
   };
 }
 
-function mockReqRes({ doctorId = 1, slotId = 1, reason = undefined } = {}) {
-  const req = { body: { doctorId, slotId, reason }, user: { id: 42 } };
+function mockReqRes({ doctorId = 1, slotId = 1, reason = undefined, consultationType = undefined } = {}) {
+  const req = { body: { doctorId, slotId, reason, consultationType }, user: { id: 42 } };
   const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
   const next = jest.fn();
   return { req, res, next };
@@ -63,6 +68,8 @@ describe('bookAppointment (conflict-resolution logic)', () => {
     const { req, res, next } = mockReqRes({ slotId: 1 });
     await bookAppointment(req, res, next);
 
+    expect(notifyBooking).toHaveBeenCalledTimes(1);
+    expect(notifyBooking).toHaveBeenCalledWith(expect.objectContaining({ patientId: 42, doctorId: 1, time: '09:00:00', isVideo: false }));
     expect(next).not.toHaveBeenCalled();
     expect(conn.commit).toHaveBeenCalledTimes(1);
     expect(conn.rollback).not.toHaveBeenCalled();
@@ -81,6 +88,7 @@ describe('bookAppointment (conflict-resolution logic)', () => {
     expect(res.json).not.toHaveBeenCalled();
     expect(conn.commit).not.toHaveBeenCalled();
     expect(conn.rollback).toHaveBeenCalledTimes(1);
+    expect(notifyBooking).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledTimes(1);
     const err = next.mock.calls[0][0];
     expect(err).toBeInstanceOf(ConflictError);
@@ -156,5 +164,48 @@ describe('bookAppointment (conflict-resolution logic)', () => {
     expect(second.res.status).toHaveBeenCalledWith(201);
     expect(connA.commit).toHaveBeenCalledTimes(1);
     expect(connB.commit).toHaveBeenCalledTimes(1);
+  });
+
+  describe('video booking when online payment is not configured', () => {
+    const saved = {};
+    const KEYS = ['NODE_ENV', 'PAYMENT_MODE', 'RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET'];
+    beforeEach(() => {
+      KEYS.forEach((k) => { saved[k] = process.env[k]; delete process.env[k]; });
+      process.env.NODE_ENV = 'production'; // no keys + production = payment mode null
+    });
+    afterEach(() => {
+      KEYS.forEach((k) => { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; });
+    });
+
+    test('video -> 400 PAYMENT_NOT_CONFIGURED before any slot is locked', async () => {
+      const conn = mockConnection();
+      db.getConnection.mockResolvedValue(conn);
+
+      const { req, res, next } = mockReqRes({ consultationType: 'video' });
+      await bookAppointment(req, res, next);
+
+      const err = next.mock.calls[0][0];
+      expect(err).toBeInstanceOf(AppError);
+      expect(err.statusCode).toBe(400);
+      expect(err.code).toBe('PAYMENT_NOT_CONFIGURED');
+      expect(conn.query).not.toHaveBeenCalled();
+      expect(conn.commit).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
+    });
+
+    test('in_person still books', async () => {
+      const conn = mockConnection();
+      conn.query
+        .mockResolvedValueOnce([[{ id: 1, date: tomorrow(), time: '09:00:00', is_booked: 0, is_available: 1 }]])
+        .mockResolvedValueOnce([{ affectedRows: 1 }])
+        .mockResolvedValueOnce([{ insertId: 556 }]);
+      db.getConnection.mockResolvedValue(conn);
+
+      const { req, res, next } = mockReqRes({ consultationType: 'in_person' });
+      await bookAppointment(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(201);
+    });
   });
 });

@@ -210,6 +210,63 @@ describe('GET /api/slots caching (Redis cache-aside)', () => {
   });
 });
 
+describe('booking notifications and video gating', () => {
+  const { createUserSession, authed, cleanupUsers } = require('../helpers/session');
+  let patient;
+  let doctor;
+
+  beforeAll(async () => {
+    patient = await createUserSession('patient');
+    doctor = await createUserSession('doctor');
+  });
+
+  afterAll(async () => {
+    await cleanupUsers([patient.userId, doctor.userId]);
+  });
+
+  async function seedSlot(time) {
+    const [r] = await db.query(
+      'INSERT INTO doctor_slots (doctor_id, date, time, is_booked, is_available) VALUES (?, ?, ?, 0, 1)',
+      [doctor.doctorId, tomorrowStr(), time]
+    );
+    return r.insertId;
+  }
+
+  test('chatbot booking notifies the patient and the doctor', async () => {
+    const slotId = await seedSlot('10:00:00');
+    const res = await authed(request(app).post, '/api/chatbot/book', patient).send({ doctorId: doctor.doctorId, slotId });
+    expect(res.status).toBe(201);
+
+    const [rows] = await db.query(
+      "SELECT user_id, title FROM notifications WHERE user_id IN (?, ?) AND type = 'appointment' ORDER BY user_id",
+      [patient.userId, doctor.userId]
+    );
+    expect(rows).toEqual(expect.arrayContaining([
+      { user_id: patient.userId, title: 'Appointment booked' },
+      { user_id: doctor.userId, title: 'New appointment' },
+    ]));
+  });
+
+  test('video booking is rejected with 400 when online payment is not configured', async () => {
+    const slotId = await seedSlot('10:15:00');
+    const saved = { NODE_ENV: process.env.NODE_ENV, PAYMENT_MODE: process.env.PAYMENT_MODE };
+    process.env.NODE_ENV = 'production'; // no Razorpay keys + production = payments off
+    delete process.env.PAYMENT_MODE;
+    let res;
+    try {
+      res = await authed(request(app).post, '/api/appointments/book', patient)
+        .send({ doctorId: doctor.doctorId, slotId, consultationType: 'video' });
+    } finally {
+      process.env.NODE_ENV = saved.NODE_ENV;
+      if (saved.PAYMENT_MODE !== undefined) process.env.PAYMENT_MODE = saved.PAYMENT_MODE;
+    }
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('PAYMENT_NOT_CONFIGURED');
+    const [[slot]] = await db.query('SELECT is_booked FROM doctor_slots WHERE id = ?', [slotId]);
+    expect(slot.is_booked).toBe(0);
+  });
+});
+
 // Runs once after every describe block above has finished, not per-block —
 // closing these shared connections mid-file would break whichever describe
 // block runs next.

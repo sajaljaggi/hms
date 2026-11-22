@@ -23,6 +23,13 @@ const AdminDashboard = React.lazy(() => import('./pages/admin/Dashboard'));
 const AdminPatients = React.lazy(() => import('./pages/admin/AdminPatients'));
 const AdminAppointments = React.lazy(() => import('./pages/admin/AdminAppointments'));
 const AdminDoctors = React.lazy(() => import('./pages/admin/AdminDoctors'));
+const BedManagement = React.lazy(() => import('./pages/shared/BedManagement'));
+const BloodBank = React.lazy(() => import('./pages/shared/BloodBank'));
+const EmergencyBoard = React.lazy(() => import('./pages/shared/EmergencyBoard'));
+const Payments = React.lazy(() => import('./pages/patient/Payments'));
+const AdminPayments = React.lazy(() => import('./pages/admin/AdminPayments'));
+const TeleconsultRoom = React.lazy(() => import('./pages/shared/TeleconsultRoom'));
+const NavigatePage = React.lazy(() => import('./pages/Navigate'));
 const Home = React.lazy(() => import('./pages/Home'));
 
 const Loader = () => (
@@ -39,8 +46,11 @@ function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/navigate" element={<NavigatePage />} />
             
             <Route element={<Layout />}>
+              <Route path="consult/:appointmentId" element={<TeleconsultRoom />} />
+
               {/* Patient Routes */}
               <Route path="patient">
                 <Route index element={<PatientDashboard />} />
@@ -48,6 +58,7 @@ function App() {
                 <Route path="history" element={<PatientHistory />} />
                 <Route path="records" element={<MedicalHistory />} />
                 <Route path="profile" element={<Profile />} />
+                <Route path="payments" element={<Payments />} />
               </Route>
 
               {/* Doctor Routes */}
@@ -55,6 +66,9 @@ function App() {
                 <Route index element={<DoctorDashboard />} />
                 <Route path="appointments" element={<DoctorAppointments />} />
                 <Route path="prescribe" element={<DoctorPrescribe />} />
+                <Route path="beds" element={<BedManagement />} />
+                <Route path="blood" element={<BloodBank />} />
+                <Route path="emergency" element={<EmergencyBoard />} />
               </Route>
 
               {/* Admin Routes */}
@@ -63,6 +77,10 @@ function App() {
                 <Route path="patients" element={<AdminPatients />} />
                 <Route path="appointments" element={<AdminAppointments />} />
                 <Route path="doctors" element={<AdminDoctors />} />
+                <Route path="payments" element={<AdminPayments />} />
+                <Route path="beds" element={<BedManagement />} />
+                <Route path="blood" element={<BloodBank />} />
+                <Route path="emergency" element={<EmergencyBoard />} />
               </Route>
             </Route>
 

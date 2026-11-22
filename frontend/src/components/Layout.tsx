@@ -1,8 +1,9 @@
 
 import { Outlet, Navigate, Link, useLocation } from 'react-router-dom';
-import { LogOut, Home, Calendar, Users, FileText, User as UserIcon, Activity, Clock, FilePlus } from 'lucide-react';
+import { LogOut, Home, Calendar, Users, FileText, User as UserIcon, Activity, Clock, FilePlus, CreditCard, MapPin, Siren, BedDouble, Droplet } from 'lucide-react';
 import { useAuth } from '../context/useAuth';
 import Chatbot from './Chatbot';
+import NotificationBell from './NotificationBell';
 
 const Layout = () => {
   const { user, logout, isAuthenticated, isLoading } = useAuth();
@@ -31,12 +32,18 @@ const Layout = () => {
           { name: 'Appointment History', href: '/patient/history', icon: Clock },
           { name: 'Medical History', href: '/patient/records', icon: FileText },
           { name: 'Profile', href: '/patient/profile', icon: UserIcon },
+          { name: 'Payments', href: '/patient/payments', icon: CreditCard },
+          { name: 'Hospital Map', href: '/navigate', icon: MapPin },
         ];
       case 'doctor':
         return [
           { name: 'Dashboard', href: '/doctor', icon: Home },
           { name: 'Appointments', href: '/doctor/appointments', icon: Calendar },
           { name: 'Prescriptions', href: '/doctor/prescribe', icon: FilePlus },
+          { name: 'Emergency', href: '/doctor/emergency', icon: Siren },
+          { name: 'Beds', href: '/doctor/beds', icon: BedDouble },
+          { name: 'Blood Requests', href: '/doctor/blood', icon: Droplet },
+          { name: 'Hospital Map', href: '/navigate', icon: MapPin },
         ];
       case 'admin':
         return [
@@ -44,6 +51,11 @@ const Layout = () => {
           { name: 'Patients', href: '/admin/patients', icon: Users },
           { name: 'Appointments', href: '/admin/appointments', icon: Calendar },
           { name: 'Doctors', href: '/admin/doctors', icon: Activity },
+          { name: 'Emergency', href: '/admin/emergency', icon: Siren },
+          { name: 'Beds', href: '/admin/beds', icon: BedDouble },
+          { name: 'Blood Bank', href: '/admin/blood', icon: Droplet },
+          { name: 'Payments', href: '/admin/payments', icon: CreditCard },
+          { name: 'Hospital Map', href: '/navigate', icon: MapPin },
         ];
       default:
         return [];
@@ -111,7 +123,8 @@ const Layout = () => {
              <span className="text-lg font-bold text-gray-900">HMS Portal</span>
           </div>
           <div className="flex-1" />
-          <div className="flex items-center ml-4">
+          <div className="flex items-center ml-4 gap-3">
+            <NotificationBell />
             <button
               onClick={async () => {
                 await logout();

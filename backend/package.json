@@ -5,12 +5,14 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
+    "start:e2e": "node -r dotenv/config server.js dotenv_config_path=.env.test",
     "dev": "nodemon server.js",
     "test": "jest tests/unit --runInBand",
     "test:unit": "jest tests/unit --runInBand",
     "test:integration": "node database/setupTestDb.js && jest tests/integration --runInBand",
     "test:all": "npm run test:unit && npm run test:integration",
     "test:coverage": "jest tests/unit --coverage --runInBand",
+    "test:coverage:all": "node database/setupTestDb.js && jest tests/unit tests/integration --coverage --runInBand",
     "db:migrate": "node database/migrate.js",
     "lint": "eslint ."
   },

@@ -11,6 +11,13 @@ const doctorRoutes      = require('./routes/doctorRoutes');
 const appointmentRoutes = require('./routes/appointmentRoutes');
 const adminRoutes       = require('./routes/adminRoutes');
 const chatbotRoutes     = require('./routes/chatbotRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const bedRoutes = require('./routes/bedRoutes');
+const bloodBankRoutes = require('./routes/bloodBankRoutes');
+const emergencyRoutes = require('./routes/emergencyRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
+const teleconsultRoutes = require('./routes/teleconsultRoutes');
+const navigationRoutes = require('./routes/navigationRoutes');
 
 // Error handler middleware
 const errorHandler = require('./middleware/errorHandler');
@@ -36,6 +43,9 @@ app.use(cors({
   credentials: true, // required for the browser to send/receive the auth cookies
 }));
 app.use(cookieParser());
+// The Razorpay webhook HMAC is over the exact raw bytes, so this path must get a Buffer, not parsed JSON.
+// express.json() skips a body that was already read here.
+app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -54,6 +64,13 @@ app.use('/api/doctor',  doctorRoutes);
 app.use('/api',         appointmentRoutes); // /api/doctors, /api/slots, /api/appointments/book
 app.use('/api/admin',   adminRoutes);
 app.use('/api/chatbot', chatbotRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/beds', bedRoutes);
+app.use('/api/blood', bloodBankRoutes);
+app.use('/api/emergency', emergencyRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/teleconsult', teleconsultRoutes);
+app.use('/api/navigation', navigationRoutes);
 
 // Health check — also queries the DB (not just a liveness ping) so it
 // doubles as the target for the keep-alive workflow: free-tier managed

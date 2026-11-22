@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Search, CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Search, CheckCircle, XCircle, Clock, AlertCircle, Video } from 'lucide-react';
 import { doctorService } from '../../services/doctorService';
-import { format } from 'date-fns';
+import { teleconsultService } from '../../services/teleconsultService';
+import { getErrorMessage } from '../../utils/getErrorMessage';
+import { formatDbDate } from '../../utils/dates';
 
 interface Appointment {
   id: number; status: string; date: string; time: string;
   patient_name: string; patient_email: string; patient_phone: string; age: number; gender: string;
+  payment_status: 'unpaid' | 'paid'; consultation_type: 'in_person' | 'video';
 }
 
 const statusColors: Record<string, string> = {
@@ -20,6 +24,7 @@ export default function DoctorAppointments() {
   const [dateFilter, setDateFilter]       = useState('');
   const [patientFilter, setPatientFilter] = useState('');
   const [error, setError] = useState('');
+  const [completingId, setCompletingId] = useState<number | null>(null);
 
   const fetchData = (showLoading = true) => {
     if (showLoading) setLoading(true);
@@ -42,6 +47,19 @@ export default function DoctorAppointments() {
       setAppointments(prev => prev.map(a => a.id === id ? { ...a, status } : a));
     } catch {
       setError('Failed to update status.');
+    }
+  };
+
+  const completeVideo = async (id: number) => {
+    if (completingId !== null) return;
+    setCompletingId(id);
+    try {
+      await teleconsultService.complete(id);
+      setAppointments(prev => prev.map(a => a.id === id ? { ...a, status: 'completed' } : a));
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to mark consultation completed.'));
+    } finally {
+      setCompletingId(null);
     }
   };
 
@@ -82,14 +100,34 @@ export default function DoctorAppointments() {
                 <p className="text-sm text-gray-500">{appt.patient_email} • {appt.patient_phone}</p>
                 <p className="text-sm text-gray-500">{appt.age ? `${appt.age} yrs` : ''}{appt.gender ? ` • ${appt.gender}` : ''}</p>
                 <p className="text-sm text-teal-700 font-medium mt-1">
-                  {format(new Date(appt.date), 'MMM dd, yyyy')} at {appt.time}
+                  {formatDbDate(appt.date)} at {appt.time}
                 </p>
               </div>
               <div className="flex flex-col items-end gap-2">
                 <span className={`text-xs font-medium px-2.5 py-1 rounded-full capitalize ${statusColors[appt.status]}`}>
                   {appt.status}
                 </span>
-                {appt.status === 'pending' && (
+                {appt.consultation_type === 'video' && (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full bg-indigo-100 text-indigo-700"><Video className="w-3 h-3" /> Video</span>
+                )}
+                {appt.consultation_type === 'video' && appt.status === 'pending' && (
+                  <div className="flex gap-2">
+                    {appt.payment_status === 'paid' && (
+                      <Link to={`/consult/${appt.id}`} className="flex items-center gap-1 text-xs font-medium bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700">
+                        <Video className="w-3.5 h-3.5" /> Join video
+                      </Link>
+                    )}
+                    <button onClick={() => completeVideo(appt.id)} disabled={completingId !== null}
+                      className="flex items-center gap-1 text-xs font-medium bg-green-600 text-white px-3 py-1.5 rounded-md hover:bg-green-700 transition">
+                      <CheckCircle className="w-3.5 h-3.5" /> Mark completed
+                    </button>
+                    <button onClick={() => updateStatus(appt.id, 'cancelled')}
+                      className="flex items-center gap-1 text-xs font-medium bg-red-100 text-red-700 px-3 py-1.5 rounded-md hover:bg-red-200 transition">
+                      <XCircle className="w-3.5 h-3.5" /> Cancel
+                    </button>
+                  </div>
+                )}
+                {appt.consultation_type !== 'video' && appt.status === 'pending' && (
                   <div className="flex gap-2">
                     <button onClick={() => updateStatus(appt.id, 'completed')}
                       className="flex items-center gap-1 text-xs font-medium bg-green-600 text-white px-3 py-1.5 rounded-md hover:bg-green-700 transition">

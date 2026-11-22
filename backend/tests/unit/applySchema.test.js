@@ -17,7 +17,7 @@ describe('applySchema (SQL file parsing/execution)', () => {
     };
   }
 
-  test('applies all 4 SQL files without error against a healthy connection', async () => {
+  test('applies all SQL files without error against a healthy connection', async () => {
     const conn = mockConn();
     await applySchema(conn);
     expect(conn.query).toHaveBeenCalled();

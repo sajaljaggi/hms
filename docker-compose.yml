@@ -55,6 +55,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       CORS_ORIGIN: http://localhost:8080
+      TZ: Asia/Kolkata # slot times are IST wall-clock values
     depends_on:
       mysql:
         condition: service_healthy

@@ -4,6 +4,7 @@ const { generateSlotsForDoctorDate, generateSlotsForAllDoctors } = require('../u
 const { NotFoundError, ConflictError, ValidationError } = require('../utils/errors');
 const { invalidateCache, invalidateByPattern, availabilityKey, availabilityKeyPattern } = require('../utils/cache');
 const { toDateStr } = require('../utils/dates');
+const { inTransaction } = require('../utils/transaction');
 
 // ─── GET /api/admin/users ───────────────────────────────────────────────────
 const getAllUsers = async (req, res, next) => {
@@ -46,7 +47,7 @@ const getAllAppointments = async (req, res, next) => {
   try {
     let sql = `
       SELECT
-        a.id, a.status, a.created_at,
+        a.id, a.status, a.payment_status, a.consultation_type, a.created_at,
         ds.date, ds.time,
         pu.name  AS patient_name,
         pu.email AS patient_email,
@@ -84,10 +85,17 @@ const deleteUser = async (req, res, next) => {
       throw new ValidationError('Cannot delete your own account.');
     }
 
-    const [result] = await db.query('DELETE FROM users WHERE id = ?', [id]);
-    if (result.affectedRows === 0) {
-      throw new NotFoundError('User not found.');
-    }
+    await inTransaction(async (conn) => {
+      // The user row lock serializes with bed allocation (its FK insert share-locks this row).
+      const [[user]] = await conn.query('SELECT id FROM users WHERE id = ? FOR UPDATE', [id]);
+      if (!user) throw new NotFoundError('User not found.');
+      // Deleting would cascade the open allocation away and leave its bed occupied forever.
+      const [[open]] = await conn.query(
+        'SELECT id FROM bed_allocations WHERE patient_id = ? AND discharged_at IS NULL LIMIT 1', [id]
+      );
+      if (open) throw new ConflictError('Discharge the patient from their bed first.');
+      await conn.query('DELETE FROM users WHERE id = ?', [id]);
+    });
 
     res.json({ success: true, message: 'User deleted successfully.' });
   } catch (err) {

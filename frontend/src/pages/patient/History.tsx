@@ -1,8 +1,11 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Calendar, Clock, Download, AlertCircle, Search, Filter, X, Star } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Calendar, Clock, Download, AlertCircle, Search, Filter, X, Star, Video } from 'lucide-react';
 import { patientService } from '../../services/patientService';
 import { format, parse, addMinutes } from 'date-fns';
 import { getErrorMessage } from '../../utils/getErrorMessage';
+import { formatDbDate, localDateInput } from '../../utils/dates';
+import { usePayment } from '../../components/usePayment';
 import { backendFileUrl } from '../../config';
 
 interface Appointment {
@@ -10,6 +13,7 @@ interface Appointment {
   doctor_name: string; specialization: string; fees: number;
   prescription_notes?: string; prescription_file?: string;
   my_rating?: number | null;
+  payment_status: 'unpaid' | 'paid'; consultation_type: 'in_person' | 'video';
 }
 
 const statusColors: Record<string, string> = {
@@ -100,12 +104,13 @@ export default function History() {
   const [searchSpec, setSearchSpec] = useState('');
   const [searchDate, setSearchDate] = useState('');
 
-  useEffect(() => {
-    patientService.getAppointments()
-      .then(res => setAppointments(res.data.data))
-      .catch(() => setError('Could not load appointment history.'))
-      .finally(() => setLoading(false));
-  }, []);
+  const load = () => patientService.getAppointments()
+    .then(res => { setAppointments(res.data.data); setError(''); })
+    .catch(() => setError('Could not load appointment history.'))
+    .finally(() => setLoading(false));
+  const { pay, busyId, notice, element: payModal } = usePayment(() => { void load(); });
+
+  useEffect(() => { void load(); }, []);
 
   // Derive unique specializations for the dropdown
   const specializations = useMemo(() => {
@@ -115,7 +120,7 @@ export default function History() {
 
   const filtered = useMemo(() => appointments.filter(appt => {
     const specMatch = searchSpec ? appt.specialization === searchSpec : true;
-    const dateMatch = searchDate ? appt.date.startsWith(searchDate) : true;
+    const dateMatch = searchDate ? localDateInput(new Date(appt.date)) === searchDate : true;
     return specMatch && dateMatch;
   }), [appointments, searchSpec, searchDate]);
 
@@ -175,6 +180,11 @@ export default function History() {
         </div>
       </div>
 
+      {notice && (
+        <div role="status" className={`text-sm rounded-lg p-3 ${notice.type === 'success' ? 'text-green-700 bg-green-50' : 'text-red-600 bg-red-50'}`}>{notice.text}</div>
+      )}
+      {payModal}
+
       {error && (
         <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-lg p-3">
           <AlertCircle className="w-4 h-4" /> {error}
@@ -192,7 +202,7 @@ export default function History() {
 
       <div className="space-y-4">
         {filtered.map(appt => (
-          <div key={appt.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+          <article key={appt.id} aria-label={`${appt.specialization} with ${appt.doctor_name} on ${formatDbDate(appt.date)}`} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
             <div className="flex flex-wrap justify-between items-start gap-4">
               <div>
                 <p className="font-semibold text-gray-900 text-base">{appt.specialization}</p>
@@ -200,7 +210,7 @@ export default function History() {
                 <div className="flex items-center gap-3 mt-2 text-sm text-gray-500">
                   <span className="flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5" />
-                    {format(new Date(appt.date), 'MMM dd, yyyy')}
+                    {formatDbDate(appt.date)}
                   </span>
                   <span className="flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5" />
@@ -212,7 +222,26 @@ export default function History() {
                 <span className={`text-xs font-medium px-2.5 py-1 rounded-full capitalize ${statusColors[appt.status]}`}>
                   {appt.status}
                 </span>
+                <div className="flex gap-1.5">
+                  {appt.consultation_type === 'video' && (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full bg-indigo-100 text-indigo-700"><Video className="w-3 h-3" /> Video</span>
+                  )}
+                  <span className={`text-xs font-medium px-2 py-1 rounded-full ${appt.payment_status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                    {appt.payment_status === 'paid' ? 'Paid' : 'Unpaid'}
+                  </span>
+                </div>
                 <span className="text-sm font-bold text-teal-700">₹{appt.fees}</span>
+                {appt.payment_status === 'unpaid' && appt.status === 'pending' && (
+                  <button onClick={() => pay(appt.id)} disabled={busyId !== null}
+                    className="text-xs font-medium bg-teal-600 text-white px-3 py-1.5 rounded-md hover:bg-teal-700 disabled:opacity-60">
+                    {busyId === appt.id ? 'Processing…' : `Pay ₹${appt.fees}`}
+                  </button>
+                )}
+                {appt.consultation_type === 'video' && appt.payment_status === 'paid' && appt.status === 'pending' && (
+                  <Link to={`/consult/${appt.id}`} className="flex items-center gap-1 text-xs font-medium bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700">
+                    <Video className="w-3.5 h-3.5" /> Join video
+                  </Link>
+                )}
                 {appt.prescription_file && (
                   <a href={backendFileUrl(appt.prescription_file)} target="_blank" rel="noopener noreferrer"
                     className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium">
@@ -240,7 +269,7 @@ export default function History() {
                 />
               </div>
             )}
-          </div>
+          </article>
         ))}
       </div>
     </div>

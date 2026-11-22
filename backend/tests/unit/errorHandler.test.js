@@ -43,6 +43,14 @@ describe('errorHandler', () => {
     );
   });
 
+  test.each(['ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT'])('%s: mapped to 409 CONFLICT', (code) => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    const res = mockRes();
+    errorHandler(Object.assign(new Error('lock'), { code }), mockReq(), res, jest.fn());
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json.mock.calls[0][0].error.code).toBe('CONFLICT');
+  });
+
   test('known MySQL duplicate-entry error: mapped to 409 CONFLICT, not a raw 500', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     const mysqlErr = Object.assign(new Error("Duplicate entry 'a@b.com' for key 'email'"), { code: 'ER_DUP_ENTRY' });
