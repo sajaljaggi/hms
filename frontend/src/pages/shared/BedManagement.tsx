@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { BedDouble, Plus } from 'lucide-react';
 import { bedService } from '../../services/bedService';
+import { adminService } from '../../services/adminService';
 import { useAuth } from '../../context/useAuth';
 import PatientPicker from '../../components/PatientPicker';
 import { BedRequestsTab, MyPatientsTab } from './BedRequests';
@@ -43,6 +44,9 @@ export default function BedManagement() {
   const [reason, setReason] = useState('');
   // Patients doctors asked a bed for, offered first when allocating.
   const [requested, setRequested] = useState<BedRequest[] | null>(null);
+  // For a walk-in (no doctor's request): the doctor responsible, who then sees the patient and can request discharge.
+  const [doctors, setDoctors] = useState<{ user_id: number; name: string; specialization: string }[]>([]);
+  const [attendingId, setAttendingId] = useState('');
   const [wardForm, setWardForm] = useState<{ name: string; wardType: WardType; floor: string } | null>(null);
   const [bedForm, setBedForm] = useState<{ wardId: string; bedNumber: string; dailyRate: string } | null>(null);
 
@@ -88,10 +92,11 @@ export default function BedManagement() {
     }
   };
 
-  const closeAlloc = () => { setDialogError(''); setAllocBed(null); setPatient(null); setReason(''); setRequested(null); };
+  const closeAlloc = () => { setDialogError(''); setAllocBed(null); setPatient(null); setReason(''); setRequested(null); setAttendingId(''); };
 
   const openAlloc = async (bed: Bed) => {
     setAllocBed(bed);
+    if (doctors.length === 0) adminService.getDoctors().then((r) => setDoctors(r.data.data)).catch(() => {});
     try {
       const res = await bedService.getRequests();
       // Pending bed requests; those asking for this bed's ward type first (the server already sorts by urgency, oldest).
@@ -104,11 +109,16 @@ export default function BedManagement() {
     }
   };
   const allocWardType = allocBed ? wards.find((w) => w.id === allocBed.ward_id)?.ward_type : undefined;
+  // A requested patient already has their doctor (the one who asked).
+  const fromRequest = !!patient && !!requested?.some((r) => r.patient_id === patient.id);
 
   const submitAllocate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!allocBed || !patient) return;
-    const ok = await run('allocate', () => bedService.allocate(allocBed.id, { patientId: patient.id, reason: reason.trim() || undefined }), 'Failed to allocate bed', true);
+    const ok = await run('allocate', () => bedService.allocate(allocBed.id, {
+      patientId: patient.id, reason: reason.trim() || undefined,
+      attendingDoctorId: !fromRequest && attendingId ? Number(attendingId) : undefined,
+    }), 'Failed to allocate bed', true);
     if (ok) closeAlloc();
   };
 
@@ -272,6 +282,14 @@ export default function BedManagement() {
             </fieldset>
             <p className="text-sm text-gray-500">Or another patient:</p>
             <PatientPicker value={patient} onChange={setPatient} />
+            {patient && !fromRequest && (
+              <label className="block text-sm font-medium text-gray-700">Attending doctor (optional)
+                <select className={`${input} w-full mt-1`} value={attendingId} onChange={(e) => setAttendingId(e.target.value)}>
+                  <option value="">None</option>
+                  {doctors.map((d) => <option key={d.user_id} value={d.user_id}>{d.name} ({d.specialization})</option>)}
+                </select>
+              </label>
+            )}
             {dialogError && <p role="alert" className="text-sm text-red-700">{dialogError}</p>}
             <label className="block text-sm font-medium text-gray-700">Reason
               <input className={`${input} w-full mt-1`} value={reason} onChange={(e) => setReason(e.target.value)} />

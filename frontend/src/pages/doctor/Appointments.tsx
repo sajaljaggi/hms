@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Search, CheckCircle, XCircle, Clock, AlertCircle, Video } from 'lucide-react';
 import { doctorService } from '../../services/doctorService';
 import { teleconsultService } from '../../services/teleconsultService';
+import { hasStarted } from '../../utils/dates';
 import { getErrorMessage } from '../../utils/getErrorMessage';
 import { formatDbDate } from '../../utils/dates';
 
@@ -117,10 +118,10 @@ export default function DoctorAppointments() {
                         <Video className="w-3.5 h-3.5" /> Join video
                       </Link>
                     )}
-                    <button onClick={() => completeVideo(appt.id)} disabled={completingId !== null}
+                    {hasStarted(appt.date, appt.time) && <button onClick={() => completeVideo(appt.id)} disabled={completingId !== null}
                       className="flex items-center gap-1 text-xs font-medium bg-green-600 text-white px-3 py-1.5 rounded-md hover:bg-green-700 transition">
                       <CheckCircle className="w-3.5 h-3.5" /> Mark completed
-                    </button>
+                    </button>}
                     <button onClick={() => updateStatus(appt.id, 'cancelled')}
                       className="flex items-center gap-1 text-xs font-medium bg-red-100 text-red-700 px-3 py-1.5 rounded-md hover:bg-red-200 transition">
                       <XCircle className="w-3.5 h-3.5" /> Cancel
@@ -129,10 +130,10 @@ export default function DoctorAppointments() {
                 )}
                 {appt.consultation_type !== 'video' && appt.status === 'pending' && (
                   <div className="flex gap-2">
-                    <button onClick={() => updateStatus(appt.id, 'completed')}
+                    {hasStarted(appt.date, appt.time) && <button onClick={() => updateStatus(appt.id, 'completed')}
                       className="flex items-center gap-1 text-xs font-medium bg-green-600 text-white px-3 py-1.5 rounded-md hover:bg-green-700 transition">
                       <CheckCircle className="w-3.5 h-3.5" /> Complete
-                    </button>
+                    </button>}
                     <button onClick={() => updateStatus(appt.id, 'cancelled')}
                       className="flex items-center gap-1 text-xs font-medium bg-red-100 text-red-700 px-3 py-1.5 rounded-md hover:bg-red-200 transition">
                       <XCircle className="w-3.5 h-3.5" /> Cancel

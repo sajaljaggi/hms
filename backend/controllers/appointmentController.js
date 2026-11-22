@@ -3,7 +3,7 @@ const db = require('../config/db');
 const { generateSlotsForDoctorDate } = require('../utils/generateSlots');
 const { AppError, NotFoundError, ConflictError, ValidationError } = require('../utils/errors');
 const { getCache, setCache, invalidateCache, availabilityKey } = require('../utils/cache');
-const { toDateStr } = require('../utils/dates');
+const { toDateStr, bookingWindow, BOOKING_DAYS } = require('../utils/dates');
 const { notifyBooking } = require('../services/notificationService');
 const paymentGateway = require('../services/paymentGateway');
 
@@ -107,6 +107,9 @@ const bookAppointment = async (req, res, next) => {
     const slotDateTime = new Date(`${dateStr}T${slotRow.time}`);
     if (slotDateTime < new Date()) {
       throw new ValidationError('This time slot has already passed and can no longer be booked.');
+    }
+    if (dateStr > bookingWindow().last) {
+      throw new ValidationError(`Appointments can be booked up to ${BOOKING_DAYS} days ahead.`);
     }
 
     // One patient must not be able to hoard the schedule.

@@ -88,11 +88,11 @@ const updateBedStatus = async (req, res, next) => {
 // POST /api/beds/:id/allocate
 const allocate = async (req, res, next) => {
   try {
-    const { patientId, reason } = req.body;
+    const { patientId, reason, attendingDoctorId } = req.body;
     // A patient with a pending bed request gets it answered (and an emergency case admitted), same as the Requests tab.
-    const { allocationId, request } = await inTransaction(async (conn) => {
+    const { allocationId, request, attendingDoctorId: attending } = await inTransaction(async (conn) => {
       const pending = await lockPendingAdmission(conn, patientId);
-      if (!pending) return allocateBed(conn, { bedId: req.params.id, patientId, reason, allocatedBy: req.user.id });
+      if (!pending) return allocateBed(conn, { bedId: req.params.id, patientId, reason, allocatedBy: req.user.id, attendingDoctorId });
       const id = await assignBedForRequest(conn, pending, { bedId: req.params.id, adminId: req.user.id, reason });
       return { allocationId: id, request: pending };
     });
@@ -101,6 +101,7 @@ const allocate = async (req, res, next) => {
     });
     // This also answered a doctor's pending bed request.
     if (request) await notifyUsers([request.requested_by], { type: 'bed', title: 'Bed assigned', message: 'Your patient was assigned a bed.', link: '/doctor/beds' });
+    else if (attending) await notifyUsers([attending], { type: 'bed', title: 'Patient admitted', message: 'A patient was admitted under your care.', link: '/doctor/beds' });
     res.status(201).json({ success: true, data: { allocationId } });
   } catch (err) { next(err); }
 };

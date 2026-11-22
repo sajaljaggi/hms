@@ -29,6 +29,21 @@ const updateDoctorSchema = z.object({
 });
 
 // Absent = unchanged, '' = clear (except name, which cannot be blank).
+const listUsersQuerySchema = z.object({
+  role: emptyToUndefined(z.enum(['patient', 'doctor', 'admin']).optional()),
+  q: emptyToUndefined(z.string().trim().max(100).optional()),
+  sort: z.enum(['name-asc', 'name-desc', 'date-new', 'date-old']).default('date-new'),
+  page: z.coerce.number().int().min(1).max(10000).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+const listAppointmentsQuerySchema = z.object({
+  status: emptyToUndefined(z.enum(APPOINTMENT_STATUSES).optional()),
+  q: emptyToUndefined(z.string().trim().max(100).optional()),
+  page: z.coerce.number().int().min(1).max(10000).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+});
+
 const updateUserSchema = z.object({
   name:    z.string().trim().min(1, 'Name cannot be empty.').max(100).optional(),
   phone:   z.string().trim().max(20).optional(),
@@ -56,6 +71,8 @@ const generateSlotsSchema = z.object({
 });
 
 module.exports = {
+  listUsersQuerySchema,
+  listAppointmentsQuerySchema,
   SPECIALIZATIONS,
   APPOINTMENT_STATUSES,
   idParamsSchema,

@@ -1,7 +1,8 @@
 const db = require('../config/db');
 const { NotFoundError, ForbiddenError, ConflictError } = require('../utils/errors');
 const { inTransaction } = require('../utils/transaction');
-const { completeAppointment, cancelAppointment, afterCancel } = require('../services/appointmentService');
+const { completeAppointment, cancelAppointment, afterCancel, assertStarted } = require('../services/appointmentService');
+const { toDateStr } = require('../utils/dates');
 const { invalidateCache, availabilityKey } = require('../utils/cache');
 
 // Helper: get doctor row from logged-in user
@@ -75,11 +76,16 @@ const createPrescription = async (req, res, next) => {
 
     const fileUrl = await inTransaction(async (conn) => {
       const [[appt]] = await conn.query(
-        'SELECT id, patient_id, status FROM appointments WHERE id = ? AND doctor_id = ? FOR UPDATE',
+        'SELECT id, patient_id, status, slot_id FROM appointments WHERE id = ? AND doctor_id = ? FOR UPDATE',
         [appointmentId, doctorId]
       );
       if (!appt) throw new ForbiddenError('Appointment not found or not yours.');
       if (appt.status === 'cancelled') throw new ConflictError('This appointment was cancelled.');
+      // Saving a prescription completes the visit, so the visit must have started (editing a completed one is fine).
+      if (appt.status === 'pending') {
+        const [[slot]] = await conn.query('SELECT date, time FROM doctor_slots WHERE id = ?', [appt.slot_id]);
+        assertStarted(toDateStr(slot.date), slot.time);
+      }
 
       await conn.query(
         `INSERT INTO prescriptions (appointment_id, doctor_id, patient_id, notes)

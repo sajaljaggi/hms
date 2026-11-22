@@ -26,6 +26,7 @@ const formatTime = (timeStr: string) => {
 };
 
 const STATUS_FILTERS = ['all', 'pending', 'completed', 'cancelled'] as const;
+const PAGE_SIZE = 30;
 
 export default function AdminAppointments() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -37,19 +38,27 @@ export default function AdminAppointments() {
   const [newStatus, setNewStatus]       = useState('');
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
-  useEffect(() => {
-    adminService.getAppointments()
-      .then(res => setAppointments(res.data.data))
-      .catch(() => setError('Failed to load appointments.'))
-      .finally(() => setLoading(false));
-  }, []);
+  const [page, setPage]                 = useState(1);
+  const [total, setTotal]               = useState(0);
+  const [query, setQuery]               = useState(''); // the search text, once typing pauses
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const filtered = appointments
-    .filter(a => {
-      if (statusFilter !== 'all' && a.status !== statusFilter) return false;
-      const q = search.toLowerCase();
-      return a.patient_name.toLowerCase().includes(q) || a.doctor_name.toLowerCase().includes(q);
-    });
+  useEffect(() => {
+    const t = setTimeout(() => { setQuery(search.trim()); setPage(1); }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // The server filters, searches and pages: the full list grows by hundreds of visits a month.
+  useEffect(() => {
+    let live = true;
+    adminService.getAppointments({ status: statusFilter === 'all' ? undefined : statusFilter, q: query || undefined, page, limit: PAGE_SIZE })
+      .then(res => { if (live) { setAppointments(res.data.data); setTotal(res.data.total); } })
+      .catch(err => { if (live) setError(getErrorMessage(err, 'Failed to load appointments.')); })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, [statusFilter, query, page]);
+
+  const filtered = appointments;
 
   const selected = appointments.find(a => a.id === selectedId) || null;
 
@@ -90,7 +99,7 @@ export default function AdminAppointments() {
             <Calendar className="w-5 h-5 text-teal-600" />
             Appointments
           </h2>
-          <p className="text-xs text-gray-400 mt-0.5">{filtered.length} appointment{filtered.length !== 1 ? 's' : ''}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{total} appointment{total !== 1 ? 's' : ''}</p>
         </div>
 
         {/* Status Filter Pills */}
@@ -99,7 +108,7 @@ export default function AdminAppointments() {
             {STATUS_FILTERS.map(s => (
               <button
                 key={s}
-                onClick={() => setStatusFilter(s)}
+                onClick={() => { setStatusFilter(s); setPage(1); }}
                 className={`px-3 py-1 text-xs font-medium rounded-full capitalize transition
                   ${statusFilter === s
                     ? 'bg-teal-600 text-white'
@@ -148,6 +157,13 @@ export default function AdminAppointments() {
             </button>
           ))}
         </div>
+        {pages > 1 && (
+          <nav aria-label="Appointment pages" className="flex items-center justify-between gap-2 px-4 py-2 border-t border-gray-100 text-xs">
+            <button onClick={() => setPage(page - 1)} disabled={page <= 1} className="px-2 py-1 border rounded disabled:opacity-50">Previous</button>
+            <span className="text-gray-500">Page {page} of {pages}</span>
+            <button onClick={() => setPage(page + 1)} disabled={page >= pages} className="px-2 py-1 border rounded disabled:opacity-50">Next</button>
+          </nav>
+        )}
       </div>
 
       {/* ── Main Content ── */}

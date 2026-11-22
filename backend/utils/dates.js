@@ -22,4 +22,12 @@ function isWithinJoinWindow(slotDateStr, slotTimeStr, now = new Date()) {
   return t >= start - 15 * 60000 && t <= start + MINUTES_AFTER_START * 60000;
 }
 
-module.exports = { toDateStr, isWithinJoinWindow, MINUTES_AFTER_START };
+// Patients book from today up to BOOKING_DAYS - 1 days ahead (the booking page shows the same 14 days).
+const BOOKING_DAYS = 14;
+function bookingWindow(now = new Date()) {
+  const last = new Date(now);
+  last.setDate(last.getDate() + BOOKING_DAYS - 1);
+  return { first: toDateStr(now), last: toDateStr(last) };
+}
+
+module.exports = { toDateStr, isWithinJoinWindow, MINUTES_AFTER_START, BOOKING_DAYS, bookingWindow };

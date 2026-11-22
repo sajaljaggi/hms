@@ -25,6 +25,8 @@ const bedStatusSchema = z.object({ status: z.enum(['available', 'maintenance', '
 
 const allocateBedSchema = z.object({
   patientId: idParam,
+  // The responsible doctor's user id, for a walk-in without a doctor's bed request.
+  attendingDoctorId: emptyToUndefined(idParam.optional()),
   reason: emptyToUndefined(z.string().trim().max(255).optional()),
 });
 

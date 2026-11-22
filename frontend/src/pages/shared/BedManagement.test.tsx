@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import BedManagement from './BedManagement';
 import { bedService } from '../../services/bedService';
 import { useAuth } from '../../context/useAuth';
+import { adminService } from '../../services/adminService';
 import type { Bed, BedRequest } from '../../types/modules';
 
 vi.mock('../../services/bedService', () => ({
@@ -14,6 +15,7 @@ vi.mock('../../services/bedService', () => ({
   },
 }));
 vi.mock('../../context/useAuth', () => ({ useAuth: vi.fn() }));
+vi.mock('../../services/adminService', () => ({ adminService: { getDoctors: vi.fn() } }));
 
 const svc = vi.mocked(bedService);
 const bed = (id: number, over: Partial<Bed> = {}): Bed => ({
@@ -41,6 +43,7 @@ beforeEach(() => {
   svc.createRequest.mockResolvedValue({ data: { success: true, data: { id: 1 } } } as never);
   svc.fulfillRequest.mockResolvedValue({ data: { success: true, data: { allocationId: 3 } } } as never);
   svc.rejectRequest.mockResolvedValue({ data: { success: true } } as never);
+  vi.mocked(adminService.getDoctors).mockResolvedValue({ data: { success: true, data: [{ user_id: 50, name: 'Dr Who', specialization: 'Cardiology' }] } } as never);
 });
 
 const req = (id: number, over: Partial<BedRequest> = {}): BedRequest => ({
@@ -208,5 +211,23 @@ describe('BedManagement', () => {
     expect(other).toHaveClass('bg-red-50');
     expect(other).not.toHaveTextContent('Discharge requested');
     expect(within(other).getByRole('button', { name: 'Discharge' })).toBeInTheDocument();
+  });
+
+  it('a walk-in can get an attending doctor; a requested patient keeps the requesting doctor', async () => {
+    asRole('admin');
+    svc.getRequests.mockResolvedValue({ data: { success: true, data: [req(40, { patient_id: 41, patient_name: 'Req Rita' })] } } as never);
+    render(<BedManagement />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Allocate' }));
+    const dialog = screen.getByRole('dialog', { name: 'Allocate bed' });
+
+    await userEvent.click(await within(dialog).findByRole('button', { name: /Req Rita/ }));
+    expect(within(dialog).queryByLabelText(/Attending doctor/)).not.toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Change' })); // pick a walk-in instead
+    await userEvent.type(within(dialog).getByPlaceholderText(/search by name/i), 'pat');
+    await userEvent.click(await within(dialog).findByRole('option', { name: /Pat Doe/ }));
+    await userEvent.selectOptions(within(dialog).getByLabelText(/Attending doctor/), '50');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm allocation' }));
+    expect(svc.allocate).toHaveBeenCalledWith(1, { patientId: 7, reason: undefined, attendingDoctorId: 50 });
   });
 });

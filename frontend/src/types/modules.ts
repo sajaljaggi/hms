@@ -62,7 +62,7 @@ export interface BedStats {
 export interface PatientSearchResult { id: number; name: string; email: string; phone: string | null }
 export interface CreateWardBody { name: string; wardType: WardType; floor?: number }
 export interface CreateBedBody { wardId: number; bedNumber: string; dailyRate?: number }
-export interface AllocateBedBody { patientId: number; reason?: string }
+export interface AllocateBedBody { patientId: number; reason?: string; attendingDoctorId?: number }
 export interface BedListQuery { wardId?: number; status?: BedStatus }
 
 // Doctors request beds and discharges; the admin fulfills or rejects them (like blood requests).

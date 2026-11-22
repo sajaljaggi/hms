@@ -8,7 +8,8 @@ const { NotFoundError, ConflictError } = require('../utils/errors');
 // The user-row lock serializes per patient, so the open-allocation check is a plain read
 // (a FOR UPDATE on a not-yet-existing row takes a gap lock and deadlocks under concurrency).
 
-async function allocateBed(conn, { bedId, patientId, reason, allocatedBy }) {
+// attendingDoctorId (a doctor's user id) is used when no doctor's bed request names one.
+async function allocateBed(conn, { bedId, patientId, reason, allocatedBy, attendingDoctorId = null }) {
   const [beds] = await conn.query('SELECT id, ward_id, status FROM beds WHERE id = ? FOR UPDATE', [bedId]);
   if (beds.length === 0) throw new NotFoundError('Bed not found.');
   if (beds[0].status !== 'available') throw new ConflictError('Bed is not available.');
@@ -28,13 +29,19 @@ async function allocateBed(conn, { bedId, patientId, reason, allocatedBy }) {
     "SELECT id, requested_by, reason FROM bed_requests WHERE open_key = ?", [`admission:${patientId}`]
   );
 
+  const attending = request ? request.requested_by : attendingDoctorId;
+  if (!request && attendingDoctorId) {
+    const [[doc]] = await conn.query('SELECT id FROM doctors WHERE user_id = ?', [attendingDoctorId]);
+    if (!doc) throw new NotFoundError('Attending doctor not found.');
+  }
+
   // open_* back the unique keys that make a second open allocation impossible at the DB level.
   let ins;
   try {
     [ins] = await conn.query(
       `INSERT INTO bed_allocations (bed_id, patient_id, allocated_by, attending_doctor_id, reason, open_patient_id, open_bed_id)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [bedId, patientId, allocatedBy ?? null, request ? request.requested_by : null, reason ?? request?.reason ?? null, patientId, bedId]
+      [bedId, patientId, allocatedBy ?? null, attending, reason ?? request?.reason ?? null, patientId, bedId]
     );
   } catch (err) {
     if (err.code !== 'ER_DUP_ENTRY') throw err;
@@ -44,7 +51,7 @@ async function allocateBed(conn, { bedId, patientId, reason, allocatedBy }) {
   const [upd] = await conn.query("UPDATE beds SET status = 'occupied' WHERE id = ? AND status = 'available'", [bedId]);
   if (upd.affectedRows !== 1) throw new ConflictError('Bed is not available.');
   if (request) await resolveRequest(conn, request.id, { allocationId: ins.insertId, resolvedBy: allocatedBy });
-  return { allocationId: ins.insertId, bedId, wardId: beds[0].ward_id, request: request || null };
+  return { allocationId: ins.insertId, bedId, wardId: beds[0].ward_id, request: request || null, attendingDoctorId: attending };
 }
 
 // Marks a pending request fulfilled and frees its open_key.

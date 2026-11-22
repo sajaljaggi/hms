@@ -9,7 +9,7 @@
  * A second step (also run once) gives the existing non-demo patients a history of visits with detailed
  * prescriptions, and attaches a prescription PDF to nearly every prescription.
  *
- * Usage: node database/seedDemo.js   (reads backend/.env)
+ * Usage: node database/seedDemo.js   (reads backend/.env; with NODE_ENV=production it also needs --yes)
  */
 const path = require('path');
 const crypto = require('crypto');
@@ -554,6 +554,13 @@ async function seedPatientRecords() {
   } finally {
     conn.release();
   }
+}
+
+// Demo rows on a live site look like real patients: require an explicit --yes there.
+if (process.env.NODE_ENV === 'production' && !process.argv.includes('--yes')) {
+  console.error(`❌ NODE_ENV is production (database "${process.env.DB_NAME}" on ${process.env.DB_HOST}). `
+    + 'This adds 60 fake patients and their records. Run again with --yes if that is really what you want.');
+  process.exit(1);
 }
 
 main()

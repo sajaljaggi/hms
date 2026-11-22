@@ -1,7 +1,7 @@
 const request = require('supertest');
 const app = require('../../app');
 const db = require('../../config/db');
-const { generateSlotsForDoctorDate } = require('../../utils/generateSlots');
+const { generateSlotsForDoctorDate, cleanupPastSlots } = require('../../utils/generateSlots');
 const { createUserSession, authed, cleanupUsers, closeTestConnections } = require('../helpers/session');
 
 const PDF = Buffer.from('%PDF-1.4\n% test prescription\n%%EOF\n');
@@ -33,6 +33,12 @@ describe('hardening: files, prescriptions, cancellation, deletes, slots, admin e
       [apptId, patientId, `order_test_${apptId}`]
     );
   };
+  // Prescribing needs a visit that has started: move the visit's slot to yesterday (a distinct time each call).
+  let startedSeq = 0;
+  const started = (apptId) => db.query(
+    'UPDATE doctor_slots ds JOIN appointments a ON a.slot_id = ds.id SET ds.date = ?, ds.time = ? WHERE a.id = ?',
+    [inDays(-1), `07:${pad(startedSeq++)}:00`, apptId]
+  );
   const prescribe = (who, appointmentId, extra = (r) => r) =>
     extra(authed(request(app).post, '/api/doctor/prescription', who).field('appointmentId', String(appointmentId)).field('notes', 'Rest'));
 
@@ -59,6 +65,7 @@ describe('hardening: files, prescriptions, cancellation, deletes, slots, admin e
 
   test('prescription file: stored in the DB, only its patient and doctor can open it', async () => {
     const apptId = await book(patient, await seedSlot());
+    await started(apptId);
     // A spoofed patientId is ignored: the prescription belongs to the appointment's patient.
     const res = await prescribe(doctor, apptId, (r) => r.field('patientId', String(stranger.userId)).attach('file', PDF, 'scan.pdf'));
     expect(res.status).toBe(201);
@@ -87,9 +94,11 @@ describe('hardening: files, prescriptions, cancellation, deletes, slots, admin e
 
   test('uploads are checked by their real content, not their name', async () => {
     const apptId = await book(await fresh(), await seedSlot());
+    await started(apptId);
     const html = Buffer.from('<html><script>alert(1)</script></html>');
     const res = await prescribe(doctor, apptId, (r) => r.attach('file', html, 'evil.pdf'));
     expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/Only PDF, JPEG or PNG/);
     const [[a]] = await db.query('SELECT status FROM appointments WHERE id = ?', [apptId]);
     expect(a.status).toBe('pending');
   });
@@ -153,6 +162,22 @@ describe('hardening: files, prescriptions, cancellation, deletes, slots, admin e
     expect((await authed(request(app).delete, `/api/admin/user/${unpaid.userId}`, admin)).status).toBe(200);
   });
 
+  test('the nightly slot cleanup keeps cancelled visits (even with a payment) and removes only unused past slots', async () => {
+    const payer = await fresh();
+    const apptId = await book(payer, await seedSlot());
+    await markPaid(apptId, payer.userId);
+    expect((await authed(request(app).put, '/api/doctor/appointment-status', doctor).send({ appointmentId: apptId, status: 'cancelled' })).status).toBe(200);
+    // Move the cancelled visit into the past, next to a past slot nobody booked.
+    await db.query('UPDATE doctor_slots ds JOIN appointments a ON a.slot_id = ds.id SET ds.date = ? WHERE a.id = ?', [inDays(-2), apptId]);
+    const [unused] = await db.query('INSERT INTO doctor_slots (doctor_id, date, time) VALUES (?, ?, ?)', [doctor.doctorId, inDays(-2), '08:00:00']);
+
+    await expect(cleanupPastSlots()).resolves.toBeGreaterThanOrEqual(1); // must not throw on the payment
+    const [[a]] = await db.query('SELECT status FROM appointments WHERE id = ?', [apptId]);
+    expect(a.status).toBe('cancelled');
+    const [gone] = await db.query('SELECT id FROM doctor_slots WHERE id = ?', [unused.insertId]);
+    expect(gone).toEqual([]);
+  });
+
   test('blocking a day survives the slot generator', async () => {
     const date = inDays(5);
     const res = await authed(request(app).delete, '/api/admin/slots/day', admin).send({ doctorId: doctor.doctorId, date });
@@ -175,6 +200,113 @@ describe('hardening: files, prescriptions, cancellation, deletes, slots, admin e
     expect((await patch({ name: '' })).status).toBe(400);
     expect((await patch({})).status).toBe(400);
     expect((await patch({ city: 'Goa' }, 999999)).status).toBe(404);
+  });
+
+  test('profile save: empty gender keeps the stored one, a blank or too-long name is a 400', async () => {
+    const p = await fresh();
+    const put = (body) => authed(request(app).put, '/api/patient/profile', p).send(body);
+    expect((await put({ name: 'Asha Roy', gender: '' })).status).toBe(200); // the form's "not chosen"
+    expect((await put({ name: '' })).status).toBe(400);
+    expect((await put({ name: 'A'.repeat(101) })).status).toBe(400);
+    expect((await put({ phone: '9'.repeat(21) })).status).toBe(400);
+    const [[u]] = await db.query('SELECT name, gender FROM users WHERE id = ?', [p.userId]);
+    expect(u).toEqual({ name: 'Asha Roy', gender: null });
+    const reg = await request(app).post('/api/auth/register').set('Cookie', p.cookies).set('X-CSRF-Token', p.csrfToken)
+      .set('X-Forwarded-For', '10.99.1.1').send({ name: 'B'.repeat(101), email: 'long@example.com', password: 'secret12' });
+    expect(reg.status).toBe(400);
+  });
+
+  test('admin user list filters by role, searches and pages on the server', async () => {
+    const tag = `Pagetest${Date.now()}`;
+    for (let i = 0; i < 3; i++) {
+      const u = await fresh();
+      await db.query('UPDATE users SET name = ? WHERE id = ?', [`${tag} ${i}`, u.userId]);
+    }
+    const list = (q) => authed(request(app).get, `/api/admin/users?${q}`, admin);
+    const page1 = await list(`role=patient&q=${tag}&sort=name-asc&limit=2&page=1`);
+    expect(page1.body).toMatchObject({ total: 3, page: 1, limit: 2 });
+    expect(page1.body.data.map((u) => u.name)).toEqual([`${tag} 0`, `${tag} 1`]);
+    expect((await list(`role=patient&q=${tag}&sort=name-asc&limit=2&page=2`)).body.data.map((u) => u.name)).toEqual([`${tag} 2`]);
+    const all = await list('role=patient&limit=1');
+    const [[{ n }]] = await db.query("SELECT COUNT(*) AS n FROM users WHERE role = 'patient'");
+    expect(all.body.total).toBe(n); // the dashboard's patient count
+    expect((await list('limit=0')).status).toBe(400);
+    expect((await list('role=nurse')).status).toBe(400);
+    expect((await list('q=%25')).body.total).toBe(0); // LIKE wildcards are escaped
+  });
+
+  test('admin appointment list pages and searches on the server', async () => {
+    const p = await fresh();
+    await db.query("UPDATE users SET name = 'Zyxwv Searchable' WHERE id = ?", [p.userId]);
+    const apptId = await book(p, await seedSlot());
+    const res = await authed(request(app).get, '/api/admin/appointments?q=Zyxwv&status=pending&limit=5', admin);
+    expect(res.body).toMatchObject({ total: 1, page: 1, limit: 5 });
+    expect(res.body.data[0].id).toBe(apptId);
+    expect((await authed(request(app).get, '/api/admin/appointments?status=done', admin)).status).toBe(400);
+  });
+
+  test('slots and bookings are limited to today and the next 13 days', async () => {
+    const slots = (date) => request(app).get(`/api/slots?doctorId=${doctor.doctorId}&date=${date}`);
+    expect((await slots(inDays(13))).status).toBe(200);
+    expect((await slots(inDays(14))).status).toBe(400);
+    expect((await slots('2099-12-31')).status).toBe(400);
+    expect((await slots(inDays(-1))).status).toBe(400);
+    const [[{ n }]] = await db.query("SELECT COUNT(*) AS n FROM doctor_slots WHERE date = '2099-12-31'");
+    expect(n).toBe(0); // the rejected request created nothing
+    const far = await seedSlot(inDays(30), '10:00:00');
+    const res = await authed(request(app).post, '/api/appointments/book', await fresh()).send({ doctorId: doctor.doctorId, slotId: far });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/up to 14 days ahead/);
+  });
+
+  test("a visit can't be completed or prescribed before it starts", async () => {
+    const p = await fresh();
+    const apptId = await book(p, await seedSlot(inDays(3)));
+    const complete = await authed(request(app).put, '/api/doctor/appointment-status', doctor).send({ appointmentId: apptId, status: 'completed' });
+    expect(complete.status).toBe(400);
+    expect(complete.body.message).toMatch(/hasn't started/);
+    expect((await prescribe(doctor, apptId)).status).toBe(400);
+    const [[a]] = await db.query('SELECT status FROM appointments WHERE id = ?', [apptId]);
+    expect(a.status).toBe('pending');
+    // Cancelling a future visit is still allowed.
+    expect((await authed(request(app).put, '/api/doctor/appointment-status', doctor).send({ appointmentId: apptId, status: 'cancelled' })).status).toBe(200);
+  });
+
+  test('a walk-in allocated by the admin can have an attending doctor, who then sees the patient', async () => {
+    const [[ward]] = await db.query('SELECT id FROM wards LIMIT 1');
+    const bedId = (await authed(request(app).post, '/api/beds', admin).send({ wardId: ward.id, bedNumber: `WI-${Date.now() % 100000}` })).body.data.id;
+    const p = await fresh();
+    const alloc = (body) => authed(request(app).post, `/api/beds/${bedId}/allocate`, admin).send(body);
+    expect((await alloc({ patientId: p.userId, attendingDoctorId: p.userId })).status).toBe(404); // not a doctor
+    expect((await alloc({ patientId: p.userId, attendingDoctorId: doctor.userId })).status).toBe(201);
+    const mine = (await authed(request(app).get, '/api/beds/my-patients', doctor)).body.data;
+    expect(mine.map((m) => m.patient_id)).toContain(p.userId);
+    const [[n]] = await db.query("SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND title = 'Patient admitted'", [doctor.userId]);
+    expect(n.c).toBe(1);
+    await db.query('DELETE FROM bed_allocations WHERE bed_id = ?', [bedId]);
+    await db.query('DELETE FROM beds WHERE id = ?', [bedId]);
+  });
+
+  test('login limits: only failures count, and each account is limited on its own', async () => {
+    const p = await fresh();
+    const attempt = async (password, ip) => {
+      const primer = await request(app).get('/api/health');
+      const cookie = primer.headers['set-cookie'].find((c) => c.startsWith('csrf_token=')).split(';')[0];
+      return request(app).post('/api/auth/login').set('X-Forwarded-For', ip).set('Cookie', cookie)
+        .set('X-CSRF-Token', cookie.split('=')[1]).send({ email: p.email, password });
+    };
+    // 10 failures from 10 different IPs still lock this account (an attacker rotating IPs).
+    for (let i = 0; i < 10; i++) expect((await attempt('wrong-pass', `10.66.${i}.1`)).status).toBe(401);
+    expect((await attempt('wrong-pass', '10.66.200.1')).status).toBe(429);
+    // Successes from one shared IP never trip the IP limit (a class behind one address).
+    const q = await fresh();
+    for (let i = 0; i < 12; i++) {
+      const primer = await request(app).get('/api/health');
+      const cookie = primer.headers['set-cookie'].find((c) => c.startsWith('csrf_token=')).split(';')[0];
+      const r = await request(app).post('/api/auth/login').set('X-Forwarded-For', '10.77.0.1').set('Cookie', cookie)
+        .set('X-CSRF-Token', cookie.split('=')[1]).send({ email: q.email, password: 'password123' });
+      expect(r.status).toBe(200);
+    }
   });
 });
 

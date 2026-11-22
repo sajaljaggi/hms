@@ -5,24 +5,34 @@ const { NotFoundError, ConflictError, ValidationError } = require('../utils/erro
 const { invalidateCache, invalidateByPattern, availabilityKey, availabilityKeyPattern } = require('../utils/cache');
 const { toDateStr } = require('../utils/dates');
 const { inTransaction } = require('../utils/transaction');
+const { escapeLike } = require('../utils/sql');
 const { completeAppointment, cancelAppointment, afterCancel } = require('../services/appointmentService');
 
-// ─── GET /api/admin/users ───────────────────────────────────────────────────
+// ─── GET /api/admin/users?role=&q=&sort=&page=&limit= ───────────────────────
+// Filtering, search, sort and paging happen here, so the admin can reach every user, not just one page.
+const USER_SORTS = {
+  'name-asc': 'name ASC, id ASC', 'name-desc': 'name DESC, id DESC',
+  'date-new': 'created_at DESC, id DESC', 'date-old': 'created_at ASC, id ASC',
+};
 const getAllUsers = async (req, res, next) => {
   try {
-    const page  = parseInt(req.query.page)  || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const offset = (page - 1) * limit;
-
+    const { page, limit, role, q, sort } = req.query;
+    const where = [];
+    const params = [];
+    if (role) { where.push('role = ?'); params.push(role); }
+    if (q) {
+      const like = `%${escapeLike(q)}%`;
+      where.push('(name LIKE ? OR email LIKE ? OR phone LIKE ?)');
+      params.push(like, like, like);
+    }
+    const w = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const [rows] = await db.query(
       `SELECT id, name, email, role, phone, city, age, gender, address, guardian_name, medical_history, created_at
-       FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      [limit, offset]
+       FROM users ${w} ORDER BY ${USER_SORTS[sort]} LIMIT ? OFFSET ?`,
+      [...params, limit, (page - 1) * limit]
     );
-
-    const [[{ total }]] = await db.query('SELECT COUNT(*) AS total FROM users');
-
-    res.json({ success: true, total, page, data: rows });
+    const [[{ total }]] = await db.query(`SELECT COUNT(*) AS total FROM users ${w}`, params);
+    res.json({ success: true, total, page, limit, data: rows });
   } catch (err) {
     next(err);
   }
@@ -43,34 +53,33 @@ const getAllDoctors = async (req, res, next) => {
   }
 };
 
-// ─── GET /api/admin/appointments ─────────────────────────────────────────────
+// ─── GET /api/admin/appointments?status=&q=&page=&limit= ──────────────────
+// Paged and searched here: the list grows by hundreds of visits a month.
 const getAllAppointments = async (req, res, next) => {
   try {
-    let sql = `
-      SELECT
-        a.id, a.status, a.payment_status, a.consultation_type, a.created_at,
-        ds.date, ds.time,
-        pu.name  AS patient_name,
-        pu.email AS patient_email,
-        du.name  AS doctor_name,
-        d.specialization, d.fees
-      FROM appointments a
+    const { status, q, page, limit } = req.query;
+    const where = [];
+    const params = [];
+    if (status) { where.push('a.status = ?'); params.push(status); }
+    if (q) {
+      const like = `%${escapeLike(q)}%`;
+      where.push('(pu.name LIKE ? OR du.name LIKE ?)');
+      params.push(like, like);
+    }
+    const from = `FROM appointments a
       JOIN doctor_slots ds ON a.slot_id    = ds.id
       JOIN users        pu ON a.patient_id = pu.id
       JOIN doctors      d  ON a.doctor_id  = d.id
       JOIN users        du ON d.user_id    = du.id
-    `;
-    const params = [];
-
-    if (req.query.status) {
-      sql += ' WHERE a.status = ?';
-      params.push(req.query.status);
-    }
-
-    sql += ' ORDER BY a.created_at DESC';
-
-    const [rows] = await db.query(sql, params);
-    res.json({ success: true, data: rows });
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}`;
+    const [rows] = await db.query(
+      `SELECT a.id, a.status, a.payment_status, a.consultation_type, a.created_at, ds.date, ds.time,
+              pu.name AS patient_name, pu.email AS patient_email, du.name AS doctor_name, d.specialization, d.fees
+       ${from} ORDER BY a.created_at DESC, a.id DESC LIMIT ? OFFSET ?`,
+      [...params, limit, (page - 1) * limit]
+    );
+    const [[{ total }]] = await db.query(`SELECT COUNT(*) AS total ${from}`, params);
+    res.json({ success: true, total, page, limit, data: rows });
   } catch (err) {
     next(err);
   }

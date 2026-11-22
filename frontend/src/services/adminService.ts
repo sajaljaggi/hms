@@ -1,9 +1,11 @@
 import api from './api';
 
 export const adminService = {
-  getUsers:        (page = 1) => api.get('/admin/users', { params: { page } }),
+  getUsers:        (params: { role?: 'patient' | 'doctor' | 'admin'; q?: string; sort?: string; page?: number; limit?: number } = {}) =>
+    api.get('/admin/users', { params }),
   getDoctors:      ()         => api.get('/admin/doctors'),
-  getAppointments: (status?: string) => api.get('/admin/appointments', { params: status ? { status } : {} }),
+  getAppointments: (params: { status?: string; q?: string; page?: number; limit?: number } = {}) =>
+    api.get('/admin/appointments', { params }),
   deleteUser:      (id: number) => api.delete(`/admin/user/${id}`),
   createDoctor:    (data: FormData) => api.post('/admin/doctors', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
   // CRUD additions

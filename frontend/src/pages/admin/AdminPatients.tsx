@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { Search, AlertCircle, Trash2, Edit3, X, Check, Users } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { format } from 'date-fns';
+import { getErrorMessage } from '../../utils/getErrorMessage';
+
+const PAGE_SIZE = 20;
 
 interface User {
   id: number; name: string; email: string; role: string; phone: string;
@@ -20,31 +23,28 @@ export default function AdminPatients() {
   const [editForm, setEditForm]     = useState({ name: '', phone: '', city: '', address: '' });
   const [saving, setSaving]         = useState(false);
 
-  useEffect(() => {
-    adminService.getUsers()
-      .then(res => {
-        const patients = res.data.data.filter((u: User) => u.role === 'patient');
-        setUsers(patients);
-      })
-      .catch(() => setError('Failed to load patients.'))
-      .finally(() => setLoading(false));
-  }, []);
+  const [page, setPage]             = useState(1);
+  const [total, setTotal]           = useState(0);
+  const [query, setQuery]           = useState(''); // the search text, once typing pauses
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  // Filtered + sorted
-  const filtered = users
-    .filter(u => {
-      const q = search.toLowerCase();
-      return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
-    })
-    .sort((a, b) => {
-      switch (sortBy) {
-        case 'name-asc':  return a.name.localeCompare(b.name);
-        case 'name-desc': return b.name.localeCompare(a.name);
-        case 'date-new':  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-        case 'date-old':  return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-        default: return 0;
-      }
-    });
+  // Search waits for a pause in typing, then starts again from the first page.
+  useEffect(() => {
+    const t = setTimeout(() => { setQuery(search.trim()); setPage(1); }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // The server filters, sorts and pages, so every patient is reachable (not just the first page).
+  useEffect(() => {
+    let live = true; // ignore a slow response for a page or search the admin already left
+    adminService.getUsers({ role: 'patient', q: query || undefined, sort: sortBy, page, limit: PAGE_SIZE })
+      .then(res => { if (live) { setUsers(res.data.data); setTotal(res.data.total); setError(''); } })
+      .catch(err => { if (live) setError(getErrorMessage(err, 'Failed to load patients.')); })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, [query, sortBy, page]);
+
+  const filtered = users;
 
   const selected = users.find(u => u.id === selectedId) || null;
 
@@ -53,6 +53,7 @@ export default function AdminPatients() {
     try {
       await adminService.deleteUser(user.id);
       setUsers(prev => prev.filter(u => u.id !== user.id));
+      setTotal(t => t - 1);
       if (selectedId === user.id) setSelectedId(null);
     } catch {
       setError('Failed to delete patient.');
@@ -92,7 +93,7 @@ export default function AdminPatients() {
             <Users className="w-5 h-5 text-teal-600" />
             Patients
           </h2>
-          <p className="text-xs text-gray-400 mt-0.5">{filtered.length} patient{filtered.length !== 1 ? 's' : ''}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{total} patient{total !== 1 ? 's' : ''}</p>
         </div>
 
         {/* Search */}
@@ -101,7 +102,7 @@ export default function AdminPatients() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search by name or email…"
+              placeholder="Search by name, email or phone…"
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:bg-white transition"
@@ -113,7 +114,7 @@ export default function AdminPatients() {
         <div className="px-4 py-2 border-b border-gray-100">
           <select
             value={sortBy}
-            onChange={e => setSortBy(e.target.value as 'name-asc' | 'name-desc' | 'date-new' | 'date-old')}
+            onChange={e => { setSortBy(e.target.value as 'name-asc' | 'name-desc' | 'date-new' | 'date-old'); setPage(1); }}
             className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-400"
           >
             <option value="name-asc">Name A → Z</option>
@@ -147,6 +148,13 @@ export default function AdminPatients() {
             </button>
           ))}
         </div>
+        {pages > 1 && (
+          <nav aria-label="Patient pages" className="flex items-center justify-between gap-2 px-4 py-2 border-t border-gray-100 text-xs">
+            <button onClick={() => setPage(page - 1)} disabled={page <= 1} className="px-2 py-1 border rounded disabled:opacity-50">Previous</button>
+            <span className="text-gray-500">Page {page} of {pages}</span>
+            <button onClick={() => setPage(page + 1)} disabled={page >= pages} className="px-2 py-1 border rounded disabled:opacity-50">Next</button>
+          </nav>
+        )}
       </div>
 
       {/* ── Main Content ── */}

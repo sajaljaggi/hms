@@ -11,13 +11,13 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     Promise.all([
-      adminService.getUsers(),
+      adminService.getUsers({ role: 'patient', limit: 1 }),
       adminService.getDoctors(),
-      adminService.getAppointments(),
+      adminService.getAppointments({ limit: 1 }),
     ]).then(([u, d, a]) => {
-      setPatientCount(u.data.data.filter((x: { role: string }) => x.role === 'patient').length);
+      setPatientCount(u.data.total);
       setDoctorCount(d.data.data.length);
-      setAppointmentCount(a.data.data.length);
+      setAppointmentCount(a.data.total);
     }).catch(() => setError('Failed to load admin data.'))
       .finally(() => setLoading(false));
   }, []);

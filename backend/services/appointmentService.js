@@ -23,8 +23,17 @@ async function lockForChange(conn, appointmentId, actor) {
   return { ...a, doctorUserId: d ? d.user_id : null, dateStr: toDateStr(slot.date), time: slot.time };
 }
 
+// A visit can be completed from 15 minutes before its start (when the video room opens), not earlier.
+const EARLY_MINUTES = 15;
+function assertStarted(dateStr, time) {
+  if (new Date(`${dateStr}T${time}`).getTime() - Date.now() > EARLY_MINUTES * 60000) {
+    throw new ValidationError("This visit hasn't started yet, so it can't be completed.");
+  }
+}
+
 async function completeAppointment(conn, appointmentId, actor) {
   const a = await lockForChange(conn, appointmentId, actor);
+  assertStarted(a.dateStr, a.time);
   await conn.query("UPDATE appointments SET status = 'completed' WHERE id = ?", [a.id]);
   return a;
 }
@@ -67,4 +76,4 @@ async function afterCancel(a, actor) {
   }
 }
 
-module.exports = { completeAppointment, cancelAppointment, afterCancel };
+module.exports = { completeAppointment, cancelAppointment, afterCancel, assertStarted };

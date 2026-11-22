@@ -37,7 +37,7 @@ describe('allocateBed', () => {
   });
   test('success inserts, occupies the bed, and never manages the transaction', async () => {
     const conn = connWith([{ id: 5, ward_id: 2, status: 'available' }], [{ id: 9 }], [], [], { insertId: 77 }, { affectedRows: 1 });
-    await expect(allocateBed(conn, args)).resolves.toEqual({ allocationId: 77, bedId: 5, wardId: 2, request: null });
+    await expect(allocateBed(conn, args)).resolves.toEqual({ allocationId: 77, bedId: 5, wardId: 2, request: null, attendingDoctorId: null });
     expect(conn.query.mock.calls[3][0]).toMatch(/FROM bed_requests WHERE open_key = \?/);
     expect(conn.query.mock.calls[3][1]).toEqual(['admission:9']);
     expect(conn.query.mock.calls[4][1]).toEqual([5, 9, 1, null, 'obs', 9, 5]); // no attending doctor; open_patient_id, open_bed_id set

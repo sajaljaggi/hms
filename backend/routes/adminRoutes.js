@@ -21,6 +21,8 @@ const {
 } = require('../controllers/adminController');
 const {
   idParamsSchema,
+  listUsersQuerySchema,
+  listAppointmentsQuerySchema,
   slotIdParamsSchema,
   createDoctorSchema,
   updateDoctorSchema,
@@ -34,10 +36,10 @@ const {
 // All routes require: JWT + admin role
 router.use(auth, requireRole('admin'));
 
-router.get('/users',                    getAllUsers);         // GET    /api/admin/users
+router.get('/users',                    validate(listUsersQuerySchema, 'query'), getAllUsers);         // GET    /api/admin/users
 router.get('/doctors',                  getAllDoctors);       // GET    /api/admin/doctors
 router.post('/doctors',                 doctorImageUpload, validate(createDoctorSchema), createDoctor);  // POST   /api/admin/doctors
-router.get('/appointments',             getAllAppointments);  // GET    /api/admin/appointments
+router.get('/appointments',             validate(listAppointmentsQuerySchema, 'query'), getAllAppointments);  // GET    /api/admin/appointments
 router.delete('/user/:id',              validate(idParamsSchema, 'params'), deleteUser);          // DELETE /api/admin/user/:id
 router.patch('/users/:id',              validate(idParamsSchema, 'params'), validate(updateUserSchema), updateUser);          // PATCH  /api/admin/users/:id
 router.patch('/doctors/:id',            doctorImageUpload, validate(idParamsSchema, 'params'), validate(updateDoctorSchema), updateDoctor);  // PATCH  /api/admin/doctors/:id

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { hasStarted } from '../../utils/dates';
 import { FileText, Upload, CheckCircle, AlertCircle } from 'lucide-react';
 import { doctorService } from '../../services/doctorService';
 import { getErrorMessage } from '../../utils/getErrorMessage';
@@ -17,7 +18,10 @@ export default function Prescribe() {
 
   useEffect(() => {
     doctorService.getAppointments({ })
-      .then(res => setAppointments(res.data.data.filter((a: Appointment) => a.status !== 'cancelled')))
+      // Only visits that have started can get a prescription; newest first.
+      .then(res => setAppointments(res.data.data
+        .filter((a: Appointment) => a.status !== 'cancelled' && hasStarted(a.date, a.time))
+        .reverse()))
       .catch(() => {});
   }, []);
 

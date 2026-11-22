@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatDbDate, localDateInput } from './dates';
+import { formatDbDate, localDateInput, hasStarted } from './dates';
 
 describe('dates', () => {
   it('renders the local calendar date of the UTC instant mysql2 produces', () => {
@@ -16,5 +16,22 @@ describe('dates', () => {
   });
   it('formats a local YYYY-MM-DD', () => {
     expect(localDateInput(new Date(2026, 0, 5))).toBe('2026-01-05');
+  });
+});
+
+describe('hasStarted', () => {
+  const now = new Date(2030, 0, 15, 10, 0, 0); // local 10:00
+  it.each([
+    ['2030-01-15', '10:16:00', false], // 16 min ahead
+    ['2030-01-15', '10:15:00', true], // the room opens 15 min early
+    ['2030-01-15', '09:00:00', true],
+    ['2030-01-16', '09:00:00', false], // tomorrow
+  ])('%s %s -> %s', (date, time, expected) => {
+    expect(hasStarted(date, time, now)).toBe(expected);
+  });
+  it('reads a DB date that arrives as a UTC ISO string (IST midnight)', () => {
+    const isoForLocalDay = new Date(2030, 0, 15).toISOString();
+    expect(hasStarted(isoForLocalDay, '09:00:00', now)).toBe(true);
+    expect(hasStarted(isoForLocalDay, '11:00:00', now)).toBe(false);
   });
 });

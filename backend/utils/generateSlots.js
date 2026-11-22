@@ -1,6 +1,7 @@
 // backend/utils/generateSlots.js
 // Idempotent 15-minute slot generator: 09:00 – 16:45 (32 slots per day)
 
+const { addDays, format } = require('date-fns');
 const db = require('../config/db');
 
 /**
@@ -49,4 +50,27 @@ async function generateSlotsForAllDoctors(date) {
   await Promise.all(doctors.map(d => generateSlotsForDoctorDate(d.id, date)));
 }
 
-module.exports = { generateSlotsForDoctorDate, generateSlotsForAllDoctors };
+/**
+ * Generate slots for every doctor for the next N days from today.
+ */
+async function generateRollingSlots(days = 14) {
+  const today = new Date();
+  for (let i = 0; i < days; i++) await generateSlotsForAllDoctors(format(addDays(today, i), 'yyyy-MM-dd'));
+  return days;
+}
+
+/**
+ * Remove past slots nobody booked, to keep the table lean. A slot that any appointment points to stays,
+ * even if it is free now: a cancelled visit frees its slot, and deleting the slot would delete the visit
+ * (and fail outright when that visit has a payment record).
+ */
+async function cleanupPastSlots() {
+  const [result] = await db.query(
+    `DELETE s FROM doctor_slots s
+     WHERE s.date < CURDATE() AND s.is_booked = 0
+       AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.slot_id = s.id)`
+  );
+  return result.affectedRows;
+}
+
+module.exports = { generateSlotsForDoctorDate, generateSlotsForAllDoctors, generateRollingSlots, cleanupPastSlots };
