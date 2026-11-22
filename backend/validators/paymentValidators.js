@@ -13,4 +13,9 @@ const verifySchema = z.object({
 
 const orderIdParamsSchema = z.object({ orderId: providerId });
 
-module.exports = { createOrderSchema, verifySchema, orderIdParamsSchema };
+const listPaymentsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).max(10000).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+module.exports = { createOrderSchema, verifySchema, orderIdParamsSchema, listPaymentsQuerySchema };

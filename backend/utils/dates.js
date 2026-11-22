@@ -12,11 +12,14 @@ function toDateStr(date) {
   return String(date).split('T')[0];
 }
 
+// A visit stays joinable and payable until this long after its start (a patient must pay to join).
+const MINUTES_AFTER_START = 60;
+
 // Video join window: 15 min before the slot start until 60 min after. Slots are local DATE + TIME.
 function isWithinJoinWindow(slotDateStr, slotTimeStr, now = new Date()) {
   const start = new Date(`${slotDateStr}T${slotTimeStr}`).getTime();
   const t = now.getTime();
-  return t >= start - 15 * 60000 && t <= start + 60 * 60000;
+  return t >= start - 15 * 60000 && t <= start + MINUTES_AFTER_START * 60000;
 }
 
-module.exports = { toDateStr, isWithinJoinWindow };
+module.exports = { toDateStr, isWithinJoinWindow, MINUTES_AFTER_START };

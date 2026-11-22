@@ -11,15 +11,25 @@ const rupees = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
 export default function AdminPayments() {
   const [rows, setRows] = useState<AdminPaymentRow[]>([]);
   const [summary, setSummary] = useState<PaymentSummary | null>(null);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    paymentService.getAllPayments()
-      .then(res => { setRows(res.data.data); setSummary(res.data.summary); })
-      .catch(err => setError(getErrorMessage(err, 'Could not load payments.')))
-      .finally(() => setLoading(false));
-  }, []);
+    let live = true; // ignore a slow response for a page the admin already left
+    paymentService.getAllPayments(page)
+      .then(res => {
+        if (!live) return;
+        setRows(res.data.data); setSummary(res.data.summary);
+        setPages(Math.max(1, Math.ceil(res.data.total / res.data.limit)));
+      })
+      .catch(err => { if (live) setError(getErrorMessage(err, 'Could not load payments.')); })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, [page]);
+
+  const goTo = (p: number) => { setLoading(true); setError(''); setPage(p); };
 
   return (
     <div className="space-y-6">
@@ -56,6 +66,13 @@ export default function AdminPayments() {
             </tbody>
           </table>
         </div>
+      )}
+      {pages > 1 && (
+        <nav aria-label="Payments pages" className="flex items-center justify-end gap-3 text-sm">
+          <button onClick={() => goTo(page - 1)} disabled={page <= 1 || loading} className="px-3 py-1.5 border rounded-lg disabled:opacity-50">Previous</button>
+          <span className="text-gray-600">Page {page} of {pages}</span>
+          <button onClick={() => goTo(page + 1)} disabled={page >= pages || loading} className="px-3 py-1.5 border rounded-lg disabled:opacity-50">Next</button>
+        </nav>
       )}
     </div>
   );

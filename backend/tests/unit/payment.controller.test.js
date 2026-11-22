@@ -24,16 +24,18 @@ beforeEach(() => jest.clearAllMocks());
 
 describe('createOrder', () => {
   test('amount comes from the doctor fee in the DB, never the client body', async () => {
-    const appt = [[{ status: 'pending', payment_status: 'unpaid', doctor_id: 3 }]];
+    const appt = [[{ status: 'pending', payment_status: 'unpaid', doctor_id: 3, slot_id: 4 }]];
+    const upcoming = [[{ past: 0 }]];
     const fee = [[{ amount_paise: '75050' }]];
-    db.query.mockResolvedValueOnce(appt).mockResolvedValueOnce(fee).mockResolvedValueOnce([[]]);
+    db.query.mockResolvedValueOnce(appt).mockResolvedValueOnce(upcoming).mockResolvedValueOnce(fee).mockResolvedValueOnce([[]]);
     const c = conn();
-    c.query.mockResolvedValueOnce(appt).mockResolvedValueOnce(fee).mockResolvedValueOnce([[]]).mockResolvedValueOnce([{}]);
+    c.query.mockResolvedValueOnce(appt).mockResolvedValueOnce(upcoming).mockResolvedValueOnce(fee).mockResolvedValueOnce([[]]).mockResolvedValueOnce([{}]);
     const { res, next } = await run(createOrder, { appointmentId: 5, amount: 1, amountPaise: 1 }, c);
     expect(next).not.toHaveBeenCalled();
     expect(gateway.createOrder).toHaveBeenCalledWith(expect.objectContaining({ amountPaise: 75050 }));
     expect(c.query.mock.calls[0][0]).toContain('FOR UPDATE');
-    expect(c.query.mock.calls[3][1]).toEqual([5, 9, 75050, 'mock', 'order_mock_abc']);
+    expect(c.query.mock.calls[1][0]).not.toContain('FOR UPDATE'); // slot read stays outside the lock order
+    expect(c.query.mock.calls[4][1]).toEqual([5, 9, 75050, 'mock', 'order_mock_abc']);
     expect(res.json.mock.calls[0][0].data).toMatchObject({ orderId: 'order_mock_abc', amount: 75050, currency: 'INR', mode: 'mock', mock: { signature: 'sig' } });
   });
 
@@ -46,6 +48,17 @@ describe('createOrder', () => {
     expect(completed.message).toBe('Only upcoming appointments can be paid.');
     db.query.mockResolvedValueOnce([[{ status: 'pending', payment_status: 'paid', doctor_id: 3 }]]);
     expect((await run(createOrder, { appointmentId: 5 }, conn())).next.mock.calls[0][0].statusCode).toBe(409);
+    expect(gateway.createOrder).not.toHaveBeenCalled();
+  });
+
+  test('pending but past its time (plus the join grace) -> 400 without calling the gateway', async () => {
+    db.query
+      .mockResolvedValueOnce([[{ status: 'pending', payment_status: 'unpaid', doctor_id: 3, slot_id: 4 }]])
+      .mockResolvedValueOnce([[{ past: 1 }]]);
+    const err = (await run(createOrder, { appointmentId: 5 }, conn())).next.mock.calls[0][0];
+    expect(err.statusCode).toBe(400);
+    expect(err.message).toBe('This appointment time has passed.');
+    expect(db.query.mock.calls[1][1]).toEqual([60, 4]);
     expect(gateway.createOrder).not.toHaveBeenCalled();
   });
 });

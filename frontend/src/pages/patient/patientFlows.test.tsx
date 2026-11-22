@@ -16,20 +16,21 @@ vi.mock('../../services/paymentService', () => ({
 
 const appt = (id: number, over: object) => ({
   id, status: 'pending', date: '2026-11-25T00:00:00.000Z', time: '10:00:00', doctor_name: `Dr ${id}`,
-  specialization: 'Cardiology', fees: 500, payment_status: 'unpaid', consultation_type: 'in_person', ...over,
+  specialization: 'Cardiology', fees: 500, payment_status: 'unpaid', consultation_type: 'in_person', can_pay: 1, ...over,
 });
 
 beforeEach(() => { vi.resetAllMocks(); });
 
 describe('History', () => {
-  it('shows Pay only for unpaid pending and Join only for paid video pending', async () => {
+  it('shows Pay only where the server says can_pay and Join only for paid video pending', async () => {
     vi.mocked(patientService.getAppointments).mockResolvedValue({ data: { data: [
       appt(1, {}),
-      appt(2, { status: 'cancelled' }),
-      appt(3, { payment_status: 'paid', consultation_type: 'video' }),
-      appt(4, { payment_status: 'paid', consultation_type: 'video', status: 'completed' }),
+      appt(2, { status: 'cancelled', can_pay: 0 }),
+      appt(3, { payment_status: 'paid', consultation_type: 'video', can_pay: 0 }),
+      appt(4, { payment_status: 'paid', consultation_type: 'video', status: 'completed', can_pay: 0 }),
       appt(5, { consultation_type: 'video' }),
-      appt(6, { status: 'completed' }), // historical unpaid visit: not payable
+      appt(6, { status: 'completed', can_pay: 0 }), // historical unpaid visit: not payable
+      appt(7, { can_pay: 0 }), // pending and unpaid, but its time has passed
     ] } } as never);
     render(<MemoryRouter><History /></MemoryRouter>);
     await screen.findByText('Dr 1');

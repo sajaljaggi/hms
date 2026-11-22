@@ -14,6 +14,7 @@ interface Appointment {
   prescription_notes?: string; prescription_file?: string;
   my_rating?: number | null;
   payment_status: 'unpaid' | 'paid'; consultation_type: 'in_person' | 'video';
+  can_pay: number; // 0/1 from the server: unpaid, pending, and not past its time
 }
 
 const statusColors: Record<string, string> = {
@@ -231,7 +232,7 @@ export default function History() {
                   </span>
                 </div>
                 <span className="text-sm font-bold text-teal-700">₹{appt.fees}</span>
-                {appt.payment_status === 'unpaid' && appt.status === 'pending' && (
+                {!!appt.can_pay && (
                   <button onClick={() => pay(appt.id)} disabled={busyId !== null}
                     className="text-xs font-medium bg-teal-600 text-white px-3 py-1.5 rounded-md hover:bg-teal-700 disabled:opacity-60">
                     {busyId === appt.id ? 'Processing…' : `Pay ₹${appt.fees}`}

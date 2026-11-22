@@ -55,7 +55,7 @@ const cases: [string, () => unknown, Method, string, unknown?][] = [
   ['payments.verify', () => paymentService.verify({ orderId: 'o', paymentId: 'p', signature: 'ab' }), 'post', '/payments/verify', { orderId: 'o', paymentId: 'p', signature: 'ab' }],
   ['payments.failOrder', () => paymentService.failOrder('order_1'), 'post', '/payments/orders/order_1/fail'],
   ['payments.getMyPayments', () => paymentService.getMyPayments(), 'get', '/payments/my'],
-  ['payments.getAllPayments', () => paymentService.getAllPayments(), 'get', '/payments'],
+  ['payments.getAllPayments', () => paymentService.getAllPayments(3), 'get', '/payments', { params: { page: 3 } }],
 
   ['teleconsult.join', () => teleconsultService.join(12), 'get', '/teleconsult/12/join'],
   ['teleconsult.complete', () => teleconsultService.complete(12), 'patch', '/teleconsult/12/complete'],
