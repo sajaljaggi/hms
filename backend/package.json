@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "start:e2e": "node -r dotenv/config server.js dotenv_config_path=.env.test",
-    "dev": "nodemon server.js",
+    "dev": "node --watch server.js",
     "test": "jest tests/unit --runInBand",
     "test:unit": "jest tests/unit --runInBand",
     "test:integration": "node database/setupTestDb.js && jest tests/integration --runInBand",
