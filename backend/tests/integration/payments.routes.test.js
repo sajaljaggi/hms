@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const request = require('supertest');
 const app = require('../../app');
 const db = require('../../config/db');
-const { createUserSession, authed, cleanupUsers } = require('../helpers/session');
+const { createUserSession, authed, cleanupUsers, closeTestConnections } = require('../helpers/session');
 
 const ENV_KEYS = ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET'];
 const WEBHOOK_SECRET = 'whsec_test_only';
@@ -222,3 +222,5 @@ describe('payment routes (mock mode)', () => {
     expect(noCsrf.status).toBe(403);
   });
 });
+
+afterAll(closeTestConnections);

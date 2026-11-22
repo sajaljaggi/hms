@@ -1,7 +1,7 @@
 const request = require('supertest');
 const app = require('../../app');
 const db = require('../../config/db');
-const { createUserSession, authed, cleanupUsers } = require('../helpers/session');
+const { createUserSession, authed, cleanupUsers, closeTestConnections } = require('../helpers/session');
 
 describe('navigation routes', () => {
   let admin, patient, ids, created = [];
@@ -104,3 +104,5 @@ describe('navigation routes', () => {
     }
   });
 });
+
+afterAll(closeTestConnections);

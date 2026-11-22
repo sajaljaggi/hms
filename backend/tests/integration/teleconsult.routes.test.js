@@ -1,7 +1,7 @@
 const request = require('supertest');
 const app = require('../../app');
 const db = require('../../config/db');
-const { createUserSession, authed, cleanupUsers } = require('../helpers/session');
+const { createUserSession, authed, cleanupUsers, closeTestConnections } = require('../helpers/session');
 
 describe('teleconsult routes', () => {
   let doctor, patient, other;
@@ -73,3 +73,5 @@ describe('teleconsult routes', () => {
     expect(n.length).toBe(1);
   });
 });
+
+afterAll(closeTestConnections);

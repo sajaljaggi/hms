@@ -1,7 +1,7 @@
 const request = require('supertest');
 const app = require('../../app');
 const db = require('../../config/db');
-const { createUserSession, authed, cleanupUsers } = require('../helpers/session');
+const { createUserSession, authed, cleanupUsers, closeTestConnections } = require('../helpers/session');
 
 describe('beds routes', () => {
   let admin, doctor, p1, p2, p3, wardId, bedA, bedB, bedC, bedD;
@@ -105,3 +105,5 @@ describe('beds routes', () => {
     expect((await authed(request(app).delete, `/api/admin/user/${p2.userId}`, admin)).status).toBe(200);
   });
 });
+
+afterAll(closeTestConnections);

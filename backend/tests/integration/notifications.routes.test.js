@@ -1,7 +1,7 @@
 const request = require('supertest');
 const app = require('../../app');
 const db = require('../../config/db');
-const { createUserSession, authed, cleanupUsers } = require('../helpers/session');
+const { createUserSession, authed, cleanupUsers, closeTestConnections } = require('../helpers/session');
 const { notifyUsers } = require('../../services/notificationService');
 
 describe('notifications routes', () => {
@@ -93,6 +93,4 @@ describe('booking creates notifications', () => {
   });
 });
 
-afterAll(async () => {
-  await db.end();
-});
+afterAll(closeTestConnections);

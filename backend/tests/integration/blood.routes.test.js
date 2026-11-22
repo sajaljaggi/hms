@@ -1,7 +1,7 @@
 const request = require('supertest');
 const app = require('../../app');
 const db = require('../../config/db');
-const { createUserSession, authed, cleanupUsers } = require('../helpers/session');
+const { createUserSession, authed, cleanupUsers, closeTestConnections } = require('../helpers/session');
 const { addDays } = require('../../utils/bloodCompatibility');
 const { toDateStr } = require('../../utils/dates');
 
@@ -156,3 +156,5 @@ describe('blood bank routes', () => {
     expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
   });
 });
+
+afterAll(closeTestConnections);

@@ -2,6 +2,7 @@ const request = require('supertest');
 const bcrypt = require('bcryptjs');
 const app = require('../../app');
 const db = require('../../config/db');
+const redis = require('../../config/redis');
 
 const PASSWORD = 'password123';
 const PASSWORD_HASH = bcrypt.hashSync(PASSWORD, 4);
@@ -58,4 +59,11 @@ async function cleanupUsers(ids) {
   if (list.length) await db.query('DELETE FROM users WHERE id IN (?)', [list]);
 }
 
-module.exports = { csrfFrom, createUserSession, authed, cleanupUsers, PASSWORD };
+// Call from a file's last top-level afterAll: an open DB pool or a Redis client
+// retrying its connection keeps Jest from exiting after the run.
+async function closeTestConnections() {
+  await db.end();
+  redis.disconnect();
+}
+
+module.exports = { csrfFrom, createUserSession, authed, cleanupUsers, closeTestConnections, PASSWORD };
