@@ -35,6 +35,9 @@ services:
         value: production
       - key: PORT
         value: 5000
+      # Browsers reach the API through Vercel's /api rewrite: Vercel + Render = 2 proxy hops.
+      - key: TRUST_PROXY_HOPS
+        value: "2"
       - key: DB_HOST
         sync: false
       - key: DB_PORT

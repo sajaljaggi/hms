@@ -34,7 +34,10 @@ const app = express();
 // client, tripping "too many requests" from aggregate traffic. `1` trusts
 // exactly one hop (Render's own proxy) and reads the real client IP from
 // X-Forwarded-For.
-app.set('trust proxy', 1);
+// Proxy hops in front of the app. 1 = Render only (its default here). Behind Vercel's /api rewrite there are
+// two (Vercel, then Render): set TRUST_PROXY_HOPS=2 there, or every visitor shares Vercel's IP for rate limits.
+// Check from the logs: a rate-limited request prints the ip it saw and the x-forwarded-for chain.
+app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS) || 1);
 
 // ── Global Middleware ────────────────────────────────────────────────────────
 app.disable('x-powered-by');

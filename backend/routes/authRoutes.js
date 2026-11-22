@@ -3,14 +3,14 @@ const router  = express.Router();
 const { register, login, refresh, logout, me } = require('../controllers/authController');
 const auth = require('../middleware/auth');
 const validate = require('../middleware/validate');
-const { authLimiter } = require('../middleware/rateLimiter');
+const { authLimiter, loginAccountLimiter } = require('../middleware/rateLimiter');
 const { registerSchema, loginSchema } = require('../validators/authValidators');
 
 // POST /api/auth/register  (patient self-registration)
 router.post('/register', authLimiter, validate(registerSchema), register);
 
 // POST /api/auth/login  (all roles)
-router.post('/login', authLimiter, validate(loginSchema), login);
+router.post('/login', authLimiter, loginAccountLimiter, validate(loginSchema), login);
 
 // POST /api/auth/refresh  (reads refresh_token cookie, reissues access+refresh)
 router.post('/refresh', refresh);
