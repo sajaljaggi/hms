@@ -34,7 +34,16 @@ async function cleanupPastSlots() {
 }
 
 // ── Start Server ──────────────────────────────────────────────────────────────
-app.listen(PORT, async () => {
+// Express 5 hands listen errors (e.g. EADDRINUSE) to this callback instead of throwing,
+// so without this check the process stays up, serving nothing, after printing "running".
+app.listen(PORT, async (err) => {
+  if (err) {
+    console.error(`❌ Could not listen on port ${PORT}: ${err.message}`);
+    if (err.code === 'EADDRINUSE') {
+      console.error('   Another process holds this port. On macOS, AirPlay Receiver uses 5000; set PORT=5001 in backend/.env.');
+    }
+    process.exit(1);
+  }
   console.log(`\n🏥 HMS Backend running on http://localhost:${PORT}`);
   console.log(`📋 Health check: http://localhost:${PORT}/api/health\n`);
 
