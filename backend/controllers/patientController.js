@@ -1,6 +1,8 @@
 const db = require('../config/db');
 const { NotFoundError, ValidationError, ConflictError } = require('../utils/errors');
 const { MINUTES_AFTER_START } = require('../utils/dates');
+const { inTransaction } = require('../utils/transaction');
+const { cancelAppointment, afterCancel } = require('../services/appointmentService');
 
 // ─── GET /api/patient/profile ───────────────────────────────────────────────
 const getProfile = async (req, res, next) => {
@@ -51,6 +53,7 @@ const getAppointments = async (req, res, next) => {
          ds.date, ds.time,
          (a.status = 'pending' AND a.payment_status = 'unpaid'
           AND TIMESTAMP(ds.date, ds.time) + INTERVAL ? MINUTE >= NOW()) AS can_pay,
+         (a.status = 'pending' AND TIMESTAMP(ds.date, ds.time) > NOW()) AS can_cancel,
          u.name  AS doctor_name,
          d.specialization, d.fees,
          p.notes AS prescription_notes,
@@ -167,4 +170,21 @@ const getMedicalHistory = async (req, res, next) => {
   }
 };
 
-module.exports = { getProfile, updateProfile, getAppointments, getMedicalHistory, submitRating };
+// ─── POST /api/patient/appointments/:id/cancel ─────────────────────────────
+// Before the start time only. Frees the slot; a paid visit is flagged for refund.
+const cancelMyAppointment = async (req, res, next) => {
+  try {
+    const actor = { role: 'patient', userId: req.user.id };
+    const a = await inTransaction((conn) => cancelAppointment(conn, req.params.id, actor));
+    await afterCancel(a, actor);
+    res.json({
+      success: true,
+      message: a.refundDue ? 'Appointment cancelled. Your payment will be refunded.' : 'Appointment cancelled.',
+      data: { refundDue: a.refundDue },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getProfile, updateProfile, getAppointments, getMedicalHistory, submitRating, cancelMyAppointment };

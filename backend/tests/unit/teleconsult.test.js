@@ -1,4 +1,5 @@
 jest.mock('../../config/db', () => ({ getConnection: jest.fn(), query: jest.fn() }));
+jest.mock('../../utils/cache', () => ({ invalidateCache: jest.fn(), availabilityKey: (d, date) => `availability:${d}:${date}` }));
 jest.mock('../../services/notificationService', () => ({ notifyUsers: jest.fn().mockResolvedValue(1) }));
 
 const db = require('../../config/db');

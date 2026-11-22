@@ -98,7 +98,7 @@ async function markPaid(conn, orderId, paymentId, fallbackAppointmentId = null) 
   const [[ref]] = await conn.query('SELECT appointment_id FROM payments WHERE provider_order_id = ?', [orderId]);
   const appointmentId = ref ? ref.appointment_id : fallbackAppointmentId;
   if (!appointmentId) return null;
-  const [[a]] = await conn.query('SELECT patient_id, doctor_id FROM appointments WHERE id = ? FOR UPDATE', [appointmentId]);
+  const [[a]] = await conn.query('SELECT patient_id, doctor_id, status FROM appointments WHERE id = ? FOR UPDATE', [appointmentId]);
   if (!a) return null;
   const [[p]] = await conn.query('SELECT id, status, provider_order_id FROM payments WHERE appointment_id = ? FOR UPDATE', [appointmentId]);
   if (!p) return null;
@@ -110,6 +110,12 @@ async function markPaid(conn, orderId, paymentId, fallbackAppointmentId = null) 
   }
   if (p.provider_order_id !== orderId) {
     console.error(`[payments] RECONCILE: capture ${paymentId} on replaced order ${orderId} (stored ${p.provider_order_id}) marked appointment ${appointmentId} paid. Check the amount.`);
+  }
+  // Money captured after the visit was cancelled is owed back, not a paid visit.
+  if (a.status === 'cancelled') {
+    console.error(`[payments] RECONCILE: capture ${paymentId} on order ${orderId} for cancelled appointment ${appointmentId}. Marked refund_due, refund it.`);
+    await conn.query("UPDATE payments SET status = 'refund_due', provider_order_id = ?, provider_payment_id = ?, paid_at = NOW() WHERE id = ?", [orderId, paymentId, p.id]);
+    return { ...info, alreadyPaid: false, transitioned: false };
   }
   // The captured order becomes the stored one so the row matches what Razorpay charged.
   await conn.query("UPDATE payments SET status = 'paid', provider_order_id = ?, provider_payment_id = ?, paid_at = NOW() WHERE id = ?", [orderId, paymentId, p.id]);

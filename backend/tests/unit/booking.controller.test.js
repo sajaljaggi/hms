@@ -41,6 +41,9 @@ function mockReqRes({ doctorId = 1, slotId = 1, reason = undefined, consultation
   return { req, res, next };
 }
 
+const USER_LOCK = [[{ id: 42 }]];
+const NO_BOOKINGS = [[{ upcoming: 0, same_doctor_day: 0 }]];
+
 const tomorrow = () => {
   const d = new Date();
   d.setDate(d.getDate() + 1);
@@ -60,7 +63,9 @@ describe('bookAppointment (conflict-resolution logic)', () => {
   test('successful booking: slot is free, available, and in the future', async () => {
     const conn = mockConnection();
     conn.query
+      .mockResolvedValueOnce(USER_LOCK)
       .mockResolvedValueOnce([[{ id: 1, date: tomorrow(), time: '09:00:00', is_booked: 0, is_available: 1 }]]) // SELECT ... FOR UPDATE
+      .mockResolvedValueOnce(NO_BOOKINGS)
       .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE is_booked
       .mockResolvedValueOnce([{ insertId: 555 }]); // INSERT appointment
     db.getConnection.mockResolvedValue(conn);
@@ -79,7 +84,7 @@ describe('bookAppointment (conflict-resolution logic)', () => {
 
   test('double-booking: slot already booked -> 409 ConflictError, transaction rolled back', async () => {
     const conn = mockConnection();
-    conn.query.mockResolvedValueOnce([[{ id: 2, date: tomorrow(), time: '09:15:00', is_booked: 1, is_available: 1 }]]);
+    conn.query.mockResolvedValueOnce(USER_LOCK).mockResolvedValueOnce([[{ id: 2, date: tomorrow(), time: '09:15:00', is_booked: 1, is_available: 1 }]]);
     db.getConnection.mockResolvedValue(conn);
 
     const { req, res, next } = mockReqRes({ slotId: 2 });
@@ -97,7 +102,7 @@ describe('bookAppointment (conflict-resolution logic)', () => {
 
   test('slot not found -> 404 NotFoundError', async () => {
     const conn = mockConnection();
-    conn.query.mockResolvedValueOnce([[]]); // no rows
+    conn.query.mockResolvedValueOnce(USER_LOCK).mockResolvedValueOnce([[]]); // no rows
     db.getConnection.mockResolvedValue(conn);
 
     const { req, res, next } = mockReqRes({ slotId: 999 });
@@ -111,7 +116,7 @@ describe('bookAppointment (conflict-resolution logic)', () => {
 
   test('slot blocked by admin (is_available=0) -> 400 ValidationError', async () => {
     const conn = mockConnection();
-    conn.query.mockResolvedValueOnce([[{ id: 3, date: tomorrow(), time: '09:00:00', is_booked: 0, is_available: 0 }]]);
+    conn.query.mockResolvedValueOnce(USER_LOCK).mockResolvedValueOnce([[{ id: 3, date: tomorrow(), time: '09:00:00', is_booked: 0, is_available: 0 }]]);
     db.getConnection.mockResolvedValue(conn);
 
     const { req, res, next } = mockReqRes({ slotId: 3 });
@@ -124,7 +129,7 @@ describe('bookAppointment (conflict-resolution logic)', () => {
 
   test('slot already in the past -> 400 ValidationError', async () => {
     const conn = mockConnection();
-    conn.query.mockResolvedValueOnce([[{ id: 4, date: yesterday(), time: '09:00:00', is_booked: 0, is_available: 1 }]]);
+    conn.query.mockResolvedValueOnce(USER_LOCK).mockResolvedValueOnce([[{ id: 4, date: yesterday(), time: '09:00:00', is_booked: 0, is_available: 1 }]]);
     db.getConnection.mockResolvedValue(conn);
 
     const { req, res, next } = mockReqRes({ slotId: 4 });
@@ -141,13 +146,17 @@ describe('bookAppointment (conflict-resolution logic)', () => {
     // time-adjacency, so both should succeed independently.
     const connA = mockConnection();
     connA.query
+      .mockResolvedValueOnce(USER_LOCK)
       .mockResolvedValueOnce([[{ id: 10, date: tomorrow(), time: '09:00:00', is_booked: 0, is_available: 1 }]])
+      .mockResolvedValueOnce(NO_BOOKINGS)
       .mockResolvedValueOnce([{ affectedRows: 1 }])
       .mockResolvedValueOnce([{ insertId: 101 }]);
 
     const connB = mockConnection();
     connB.query
+      .mockResolvedValueOnce(USER_LOCK)
       .mockResolvedValueOnce([[{ id: 11, date: tomorrow(), time: '09:15:00', is_booked: 0, is_available: 1 }]])
+      .mockResolvedValueOnce(NO_BOOKINGS)
       .mockResolvedValueOnce([{ affectedRows: 1 }])
       .mockResolvedValueOnce([{ insertId: 102 }]);
 
@@ -164,6 +173,29 @@ describe('bookAppointment (conflict-resolution logic)', () => {
     expect(second.res.status).toHaveBeenCalledWith(201);
     expect(connA.commit).toHaveBeenCalledTimes(1);
     expect(connB.commit).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([
+    ['same doctor, same day', { upcoming: 1, same_doctor_day: 1 }, /this doctor on that day/],
+    ['5 upcoming already', { upcoming: 5, same_doctor_day: 0 }, /at most 5 upcoming/],
+  ])('booking limit: %s -> 409 BOOKING_LIMIT, slot not booked', async (_label, counts, message) => {
+    const conn = mockConnection();
+    conn.query
+      .mockResolvedValueOnce(USER_LOCK)
+      .mockResolvedValueOnce([[{ id: 20, date: tomorrow(), time: '10:00:00', is_booked: 0, is_available: 1 }]])
+      .mockResolvedValueOnce([[counts]]);
+    db.getConnection.mockResolvedValue(conn);
+
+    const { req, res, next } = mockReqRes({ slotId: 20 });
+    await bookAppointment(req, res, next);
+
+    const err = next.mock.calls[0][0];
+    expect(err.statusCode).toBe(409);
+    expect(err.code).toBe('BOOKING_LIMIT');
+    expect(err.message).toMatch(message);
+    expect(conn.query).toHaveBeenCalledTimes(3); // never reached UPDATE doctor_slots / INSERT
+    expect(conn.rollback).toHaveBeenCalledTimes(1);
+    expect(res.json).not.toHaveBeenCalled();
   });
 
   describe('video booking when online payment is not configured', () => {
@@ -196,8 +228,10 @@ describe('bookAppointment (conflict-resolution logic)', () => {
     test('in_person still books', async () => {
       const conn = mockConnection();
       conn.query
+        .mockResolvedValueOnce(USER_LOCK)
         .mockResolvedValueOnce([[{ id: 1, date: tomorrow(), time: '09:00:00', is_booked: 0, is_available: 1 }]])
-        .mockResolvedValueOnce([{ affectedRows: 1 }])
+        .mockResolvedValueOnce(NO_BOOKINGS)
+      .mockResolvedValueOnce([{ affectedRows: 1 }])
         .mockResolvedValueOnce([{ insertId: 556 }]);
       db.getConnection.mockResolvedValue(conn);
 

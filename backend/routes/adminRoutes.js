@@ -36,11 +36,11 @@ router.use(auth, requireRole('admin'));
 
 router.get('/users',                    getAllUsers);         // GET    /api/admin/users
 router.get('/doctors',                  getAllDoctors);       // GET    /api/admin/doctors
-router.post('/doctors',                 doctorImageUpload.single('profileImage'), validate(createDoctorSchema), createDoctor);  // POST   /api/admin/doctors
+router.post('/doctors',                 doctorImageUpload, validate(createDoctorSchema), createDoctor);  // POST   /api/admin/doctors
 router.get('/appointments',             getAllAppointments);  // GET    /api/admin/appointments
 router.delete('/user/:id',              validate(idParamsSchema, 'params'), deleteUser);          // DELETE /api/admin/user/:id
 router.patch('/users/:id',              validate(idParamsSchema, 'params'), validate(updateUserSchema), updateUser);          // PATCH  /api/admin/users/:id
-router.patch('/doctors/:id',            doctorImageUpload.single('profileImage'), validate(idParamsSchema, 'params'), validate(updateDoctorSchema), updateDoctor);  // PATCH  /api/admin/doctors/:id
+router.patch('/doctors/:id',            doctorImageUpload, validate(idParamsSchema, 'params'), validate(updateDoctorSchema), updateDoctor);  // PATCH  /api/admin/doctors/:id
 router.delete('/appointments/:id',      validate(idParamsSchema, 'params'), deleteAppointment);   // DELETE /api/admin/appointments/:id
 router.patch('/appointments/:id',       validate(idParamsSchema, 'params'), validate(updateAppointmentSchema), updateAppointment);   // PATCH  /api/admin/appointments/:id
 

@@ -1,7 +1,6 @@
 const express      = require('express');
 const cors         = require('cors');
 const cookieParser = require('cookie-parser');
-const path    = require('path');
 const morgan  = require('morgan');
 
 // Route files
@@ -18,6 +17,7 @@ const emergencyRoutes = require('./routes/emergencyRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const teleconsultRoutes = require('./routes/teleconsultRoutes');
 const navigationRoutes = require('./routes/navigationRoutes');
+const fileRoutes = require('./routes/fileRoutes');
 
 // Error handler middleware
 const errorHandler = require('./middleware/errorHandler');
@@ -37,6 +37,17 @@ const app = express();
 app.set('trust proxy', 1);
 
 // ── Global Middleware ────────────────────────────────────────────────────────
+app.disable('x-powered-by');
+// Basic hardening headers on every API response (the API is never meant to be framed or sniffed).
+app.use((req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    ...(process.env.NODE_ENV === 'production' && { 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains' }),
+  });
+  next();
+});
 app.use(morgan('dev'));
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
@@ -54,8 +65,6 @@ app.use(express.urlencoded({ extended: true }));
 app.use(issueCsrfToken);
 app.use(verifyCsrf);
 
-// Serve uploaded files (prescriptions) as static assets
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/api/auth',    authRoutes);
@@ -71,6 +80,7 @@ app.use('/api/emergency', emergencyRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/teleconsult', teleconsultRoutes);
 app.use('/api/navigation', navigationRoutes);
+app.use('/api/files', fileRoutes);
 
 // Health check — also queries the DB (not just a liveness ping) so it
 // doubles as the target for the keep-alive workflow: free-tier managed

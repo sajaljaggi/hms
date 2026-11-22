@@ -4,7 +4,7 @@ import { adminService } from '../../services/adminService';
 import { format } from 'date-fns';
 import SlotManagement from './SlotManagement';
 import { getErrorMessage } from '../../utils/getErrorMessage';
-import { uploadUrl } from '../../config';
+import { doctorImageUrl } from '../../config';
 
 interface Doctor {
   id: number; user_id: number; name: string; email: string; specialization: string;
@@ -301,7 +301,7 @@ export default function AdminDoctors() {
                   : 'hover:bg-gray-50 border-l-4 border-l-transparent'}`}
             >
               {d.profile_image ? (
-                <img src={uploadUrl(`doctors/${d.profile_image}`)} alt={d.name} className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
+                <img src={doctorImageUrl(d.id, d.profile_image)} alt={d.name} className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
               ) : (
                 <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold flex-shrink-0">
                   {d.name.replace(/^Dr\.\s*/, '').charAt(0).toUpperCase()}
@@ -351,7 +351,7 @@ export default function AdminDoctors() {
               <div className="flex items-start justify-between mb-5">
                 <div className="flex items-center gap-4">
                   {selected.profile_image ? (
-                    <img src={uploadUrl(`doctors/${selected.profile_image}`)} alt={selected.name} className="w-14 h-14 rounded-full object-cover" />
+                    <img src={doctorImageUrl(selected.id, selected.profile_image)} alt={selected.name} className="w-14 h-14 rounded-full object-cover" />
                   ) : (
                     <div className="w-14 h-14 rounded-full bg-blue-600 text-white flex items-center justify-center text-xl font-bold">
                       {selected.name.replace(/^Dr\.\s*/, '').charAt(0).toUpperCase()}
@@ -429,7 +429,7 @@ export default function AdminDoctors() {
                       {editImagePreview ? (
                         <img src={editImagePreview} alt="Preview" className="w-14 h-14 rounded-full object-cover border-2 border-teal-200" />
                       ) : selected?.profile_image ? (
-                        <img src={uploadUrl(`doctors/${selected.profile_image}`)} alt="Current" className="w-14 h-14 rounded-full object-cover border-2 border-gray-200" />
+                        <img src={doctorImageUrl(selected.id, selected.profile_image)} alt="Current" className="w-14 h-14 rounded-full object-cover border-2 border-gray-200" />
                       ) : (
                         <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center border-2 border-dashed border-gray-300">
                           <Image className="w-6 h-6 text-gray-400" />

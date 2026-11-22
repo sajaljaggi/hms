@@ -23,6 +23,12 @@ const Layout = () => {
     return <Navigate to="/" state={{ from: location }} replace />;
   }
 
+  // Each role has its own section; send anyone who opens another role's page back to their own.
+  const section = location.pathname.split('/')[1];
+  if (['patient', 'doctor', 'admin'].includes(section) && section !== user?.role) {
+    return <Navigate to={`/${user?.role}`} replace />;
+  }
+
   const getNavigation = () => {
     switch (user?.role) {
       case 'patient':

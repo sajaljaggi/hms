@@ -80,9 +80,9 @@ export default async function globalSetup() {
         [docId, date, time])) as [{ id: number }[], unknown];
       await conn.query('UPDATE doctor_slots SET is_booked = 1 WHERE id = ?', [slot.id]);
       const [r] = (await conn.query(
-        `INSERT INTO appointments (patient_id, doctor_id, slot_id, status, consultation_type, video_room, payment_status)
-         VALUES (?, ?, ?, 'pending', ?, ?, ?)`,
-        [patientId, docId, slot.id, type, type === 'video' ? `hms-${randomBytes(16).toString('hex')}` : null, paid ? 'paid' : 'unpaid'],
+        `INSERT INTO appointments (patient_id, doctor_id, slot_id, active_slot_id, status, consultation_type, video_room, payment_status)
+         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`,
+        [patientId, docId, slot.id, slot.id, type, type === 'video' ? `hms-${randomBytes(16).toString('hex')}` : null, paid ? 'paid' : 'unpaid'],
       )) as [{ insertId: number }, unknown];
       return r.insertId;
     };
@@ -93,7 +93,8 @@ export default async function globalSetup() {
     // Teleconsult spec: an unpaid video visit, and a paid one starting now (inside the join window).
     // The odd seconds keep the "now" slot clear of the generated :00 slots.
     const now = new Date();
-    const unpaidVideoId = await appointment(doctorId, tomorrow, '11:00:00', 'video', false);
+    // Not tomorrow: one patient may hold one visit per doctor per day, and the booking spec books tomorrow.
+    const unpaidVideoId = await appointment(doctorId, localDate(addDays(2)), '11:00:00', 'video', false);
     const paidVideoId = await appointment(doctorId, localDate(now), `${pad(now.getHours())}:${pad(now.getMinutes())}:07`, 'video', true);
 
     const [w] = (await conn.query("INSERT INTO wards (name, ward_type, floor) VALUES ('E2E Ward', 'general', 1)")) as [{ insertId: number }, unknown];

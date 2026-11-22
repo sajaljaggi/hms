@@ -35,7 +35,6 @@ export default function Prescribe() {
     setSaving(true); setError(''); setSuccess(false);
     const formData = new FormData();
     formData.append('appointmentId', apptId);
-    formData.append('patientId', patientId);
     formData.append('notes', notes);
     if (file) formData.append('file', file);
     try {

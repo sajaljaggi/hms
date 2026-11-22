@@ -15,8 +15,10 @@ describe('teleconsult routes', () => {
     const [s] = await db.query('INSERT INTO doctor_slots (doctor_id, date, time) VALUES (?, ?, ?)', [doctor.doctorId, localDate(d), localTime(d)]);
     return s.insertId;
   };
-  const book = (slotId, extra = {}) =>
-    authed(request(app).post, '/api/appointments/book', patient).send({ doctorId: doctor.doctorId, slotId, ...extra });
+  const book = (slotId, extra = {}, who = patient) =>
+    authed(request(app).post, '/api/appointments/book', who).send({ doctorId: doctor.doctorId, slotId, ...extra });
+  // A patient may hold one visit per doctor per day, so each extra same-day booking gets its own patient.
+  const freshPatient = async () => { const s = await createUserSession('patient'); ids.push(s.userId); return s; };
   const join = (s, id) => authed(request(app).get, `/api/teleconsult/${id}/join`, s);
   const status = (s, id) => authed(request(app).get, `/api/teleconsult/${id}/status`, s);
   const admit = (s, id) => authed(request(app).post, `/api/teleconsult/${id}/admit`, s);
@@ -32,14 +34,15 @@ describe('teleconsult routes', () => {
   afterAll(() => cleanupUsers(ids));
 
   test('booking creates unique rooms for video only', async () => {
-    const v1 = (await book(await seedSlot(120), { consultationType: 'video' })).body.appointmentId;
-    const v2 = (await book(await seedSlot(180), { consultationType: 'video' })).body.appointmentId;
-    const p = (await book(await seedSlot(240))).body.appointmentId;
+    const [p1, p2, p3] = [await freshPatient(), await freshPatient(), await freshPatient()];
+    const v1 = (await book(await seedSlot(120), { consultationType: 'video' }, p1)).body.appointmentId;
+    const v2 = (await book(await seedSlot(180), { consultationType: 'video' }, p2)).body.appointmentId;
+    const p = (await book(await seedSlot(240), {}, p3)).body.appointmentId;
     const [r1, r2, rp] = [await room(v1), await room(v2), await room(p)];
     expect(r1.video_room).toMatch(/^hms-[0-9a-f]{32}$/);
     expect(r1.video_room).not.toBe(r2.video_room);
     expect(rp).toEqual({ video_room: null, consultation_type: 'in_person' });
-    const [n] = await db.query("SELECT message FROM notifications WHERE user_id = ? AND message LIKE '%video%'", [patient.userId]);
+    const [n] = await db.query("SELECT message FROM notifications WHERE user_id = ? AND message LIKE '%video%'", [p1.userId]);
     expect(n.length).toBeGreaterThan(0);
   });
 
@@ -79,12 +82,14 @@ describe('teleconsult routes', () => {
     expect(ok.body.data.jwt).toBeUndefined();
     expect((await join(other, id)).status).toBe(404);
 
-    const inPerson = (await book(await seedSlot(3))).body.appointmentId;
-    expect((await join(patient, inPerson)).status).toBe(400);
+    const inPersonPatient = await freshPatient();
+    const inPerson = (await book(await seedSlot(3), {}, inPersonPatient)).body.appointmentId;
+    expect((await join(inPersonPatient, inPerson)).status).toBe(400);
 
-    const far = (await book(await seedSlot(300), { consultationType: 'video' })).body.appointmentId;
+    const farPatient = await freshPatient();
+    const far = (await book(await seedSlot(300), { consultationType: 'video' }, farPatient)).body.appointmentId;
     await db.query("UPDATE appointments SET payment_status = 'paid' WHERE id = ?", [far]);
-    const late = await join(patient, far);
+    const late = await join(farPatient, far);
     expect(late.status).toBe(403);
     expect(late.body.error.code).toBe('OUTSIDE_JOIN_WINDOW');
     expect(late.body.error.details.startsAt).toBeDefined();

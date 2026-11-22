@@ -14,6 +14,7 @@ const SQL_FILES = [
   'migration_payments.sql',
   'migration_teleconsult.sql',
   'migration_navigation.sql',
+  'migration_hardening.sql',
 ];
 
 // MySQL error codes that mean "this exact change already happened" — safe
@@ -22,7 +23,12 @@ const IGNORABLE_CODES = new Set([
   'ER_DUP_FIELDNAME',       // column already exists
   'ER_TABLE_EXISTS_ERROR',  // table already exists
   'ER_DUP_KEYNAME',         // index/key already exists
+  'ER_CANT_DROP_FIELD_OR_KEY', // index/foreign key already dropped
+  'ER_FK_DUP_NAME',         // foreign key already added
 ]);
+
+// Re-adding a named foreign key reports "Can't create table ... (errno: 121 ...)" on MySQL 8, not ER_FK_DUP_NAME.
+const isDuplicateConstraint = (err) => err.code === 'ER_CANT_CREATE_TABLE' && /errno: 121\b/.test(err.message);
 
 // Drops `CREATE DATABASE hms_db` / `USE hms_db` lines (the connection is
 // already scoped to the target database) and `-- ...` comment lines. Comments
@@ -69,7 +75,7 @@ async function applySchema(conn) {
       try {
         await conn.query(statement);
       } catch (err) {
-        if (!IGNORABLE_CODES.has(err.code)) throw err;
+        if (!IGNORABLE_CODES.has(err.code) && !isDuplicateConstraint(err)) throw err;
       }
     }
   }

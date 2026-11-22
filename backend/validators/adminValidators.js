@@ -3,6 +3,8 @@ const { emptyToUndefined, idParam } = require('./common');
 
 const SPECIALIZATIONS = ['Cardiology', 'Dermatology', 'Neurology', 'Orthopedics', 'General Medicine'];
 const APPOINTMENT_STATUSES = ['pending', 'completed', 'cancelled'];
+// A visit only moves pending -> completed or pending -> cancelled.
+const APPOINTMENT_CHANGES = ['completed', 'cancelled'];
 
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be in YYYY-MM-DD format.');
 
@@ -26,15 +28,16 @@ const updateDoctorSchema = z.object({
   fees:           z.coerce.number().positive('fees must be a positive number.'),
 });
 
+// Absent = unchanged, '' = clear (except name, which cannot be blank).
 const updateUserSchema = z.object({
-  name:    emptyToUndefined(z.string().trim().optional()),
-  phone:   emptyToUndefined(z.string().trim().optional()),
-  city:    emptyToUndefined(z.string().trim().optional()),
-  address: emptyToUndefined(z.string().trim().optional()),
-});
+  name:    z.string().trim().min(1, 'Name cannot be empty.').max(100).optional(),
+  phone:   z.string().trim().max(20).optional(),
+  city:    z.string().trim().max(100).optional(),
+  address: z.string().trim().max(255).optional(),
+}).refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'Nothing to update.' });
 
 const updateAppointmentSchema = z.object({
-  status: z.enum(APPOINTMENT_STATUSES, { message: `status must be one of: ${APPOINTMENT_STATUSES.join(', ')}.` }),
+  status: z.enum(APPOINTMENT_CHANGES, { message: `status must be one of: ${APPOINTMENT_CHANGES.join(', ')}.` }),
 });
 
 const adminSlotsQuerySchema = z.object({

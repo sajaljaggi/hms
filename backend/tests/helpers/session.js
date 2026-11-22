@@ -56,7 +56,13 @@ function authed(agentMethod, url, session) {
 // Deleting users cascades to doctors, notifications, appointments, etc.
 async function cleanupUsers(ids) {
   const list = (ids || []).filter(Boolean);
-  if (list.length) await db.query('DELETE FROM users WHERE id IN (?)', [list]);
+  if (!list.length) return;
+  // Payment rows block deleting their patient or appointment (by design), so tests remove them first.
+  await db.query(
+    `DELETE p FROM payments p JOIN appointments a ON a.id = p.appointment_id LEFT JOIN doctors d ON d.id = a.doctor_id
+     WHERE p.patient_id IN (?) OR d.user_id IN (?)`, [list, list]
+  );
+  await db.query('DELETE FROM users WHERE id IN (?)', [list]);
 }
 
 // Call from a file's last top-level afterAll: an open DB pool or a Redis client

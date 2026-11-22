@@ -100,7 +100,7 @@ Browser
   ▼
 ┌─────────────────────────┐
 │  Vercel (static + edge) │  serves the built React app
-│                         │  rewrites /api/* and /uploads/* ──┐
+│                         │  rewrites /api/* ──────────────┐
 └─────────────────────────┘                                  │  server-side proxy
                                                                ▼
                                               ┌───────────────────────────────┐
@@ -115,7 +115,7 @@ Browser
                                           └────────────────┘   └──────────────┘
 ```
 
-**Why the browser never talks to Render directly:** the frontend and backend are on different domains. Cookie-based auth across different domains makes every auth cookie a *third-party* cookie from the browser's perspective — Safari blocks these by default, and Chrome increasingly does too, regardless of correct `SameSite`/`Secure` attributes. Routing `/api` and `/uploads` through a Vercel rewrite makes the backend appear same-origin to the browser, so the cookies are first-party and reliably stored. The Vercel → Render hop is a server-to-server proxy call, which isn't subject to browser cookie policy at all. This is the same reverse-proxy pattern the local Docker/nginx setup uses, and what the Vite dev server's proxy does for local development — three different mechanisms, same underlying trick.
+**Why the browser never talks to Render directly:** the frontend and backend are on different domains. Cookie-based auth across different domains makes every auth cookie a *third-party* cookie from the browser's perspective — Safari blocks these by default, and Chrome increasingly does too, regardless of correct `SameSite`/`Secure` attributes. Routing `/api` through a Vercel rewrite makes the backend appear same-origin to the browser, so the cookies are first-party and reliably stored. The Vercel → Render hop is a server-to-server proxy call, which isn't subject to browser cookie policy at all. This is the same reverse-proxy pattern the local Docker/nginx setup uses, and what the Vite dev server's proxy does for local development — three different mechanisms, same underlying trick.
 
 See [`ARCHITECTURE_GUIDE.md`](./ARCHITECTURE_GUIDE.md) for the database schema and per-role data flow diagram.
 
@@ -175,7 +175,7 @@ npm run dev                 # http://localhost:5001 (PORT in .env; the Vite prox
 # Frontend (separate terminal)
 cd frontend
 npm install
-npm run dev                 # http://localhost:5173, proxies /api and /uploads to the backend
+npm run dev                 # http://localhost:5173, proxies /api to the backend
 ```
 
 Seed sample doctors/slots: `node backend/seedData.js` (schema.sql already includes a handful of doctors; this adds more).
@@ -234,7 +234,7 @@ cp backend/.env.example backend/.env   # fill in secrets
 docker-compose up --build
 ```
 
-Spins up MySQL, Redis, the backend (Docker), and the frontend (built + served via nginx, which also reverse-proxies `/api` and `/uploads` to the backend container — the same same-origin trick as the Vercel deployment). Frontend: `http://localhost:8080`. The backend container applies `schema.sql` + migrations automatically on every start (`backend/start.sh`), so a fresh `docker-compose up` needs no manual schema import.
+Spins up MySQL, Redis, the backend (Docker), and the frontend (built + served via nginx, which also reverse-proxies `/api` to the backend container — the same same-origin trick as the Vercel deployment). Frontend: `http://localhost:8080`. The backend container applies `schema.sql` + migrations automatically on every start (`backend/start.sh`), so a fresh `docker-compose up` needs no manual schema import.
 
 ## CI/CD
 
@@ -262,7 +262,7 @@ Aiven's free tier auto-powers-off after ~24h with no *database query* activity (
 - `render.yaml` sets `TZ=Asia/Kolkata` and prompts for `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` and `JITSI_DOMAIN` at import. Until the Razorpay keys are set, payments are disabled and video appointments cannot be booked (see [Environment Variables](#environment-variables)).
 
 ### 3. Frontend — [Vercel](https://vercel.com)
-Static Vite build, deployed from the `frontend/` directory. `frontend/vercel.json` rewrites `/api/*` and `/uploads/*` to the Render backend's URL server-side, which is what makes the auth cookies first-party (see the [Architecture](#architecture) section — this was the fix for a real bug where Chrome was silently discarding the backend's cookies as third-party). `VITE_BACKEND_URL` must stay **unset** in Vercel's project settings for this proxy to actually be used; setting it makes the frontend call Render directly, cross-origin, reintroducing the cookie problem.
+Static Vite build, deployed from the `frontend/` directory. `frontend/vercel.json` rewrites `/api/*` to the Render backend's URL server-side, which is what makes the auth cookies first-party (see the [Architecture](#architecture) section — this was the fix for a real bug where Chrome was silently discarding the backend's cookies as third-party). `VITE_BACKEND_URL` must stay **unset** in Vercel's project settings for this proxy to actually be used; setting it makes the frontend call Render directly, cross-origin, reintroducing the cookie problem.
 
 ### 4. Keeping Aiven awake — `.github/workflows/keep-alive.yml`
 A scheduled GitHub Action pings `/api/health` (which runs a real DB query) every 12 hours — comfortably inside Aiven's ~24h inactivity window. Requires a repository variable `BACKEND_HEALTH_URL` set to the deployed backend's health endpoint. Caveat: GitHub disables scheduled workflows on a repo after 60 days with no commits pushed to it at all, so this isn't fully "set and forget" if the repo goes fully dormant.
@@ -276,7 +276,7 @@ A scheduled GitHub Action pings `/api/health` (which runs a real DB query) every
 
 ## Known Limitations
 
-- **Uploads don't persist on Render's free tier** — no persistent disk means anything `multer` writes to `backend/uploads/` (doctor profile photos, prescription files) is lost on the next deploy or restart. Fine for demoing the flow; real persistence would need object storage (e.g. Cloudflare R2) wired in.
+- **Uploaded files are stored in MySQL** — prescription files and doctor photos go into the `prescription_files` and `doctor_images` tables (5 MB and 2 MB limits), because Render's free tier has no persistent disk. Prescription files are served only to their patient and doctor via `/api/files/prescriptions/:id`.
 - **Cold starts** — Render's free web services spin down after ~15 minutes idle; the first request after that takes 30–60s.
 - **Aiven free tier storage** — 1GB, more than enough for this schema's realistic data volume, but not built for production load.
 - **No structured metrics/monitoring yet** — logging is currently `morgan` request logs + a DB-aware health check, not a full Prometheus/Grafana setup.

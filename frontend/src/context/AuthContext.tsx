@@ -3,6 +3,13 @@ import { authService } from '../services/authService';
 import type { RegisterData } from '../services/authService';
 import { AuthContext, type User } from './useAuth';
 
+// Only what the first render needs. The full profile (address, medical history...) must not stay in
+// localStorage, where it survives the browser being closed on a shared computer.
+const remember = (u: User) => {
+  const { id, name, email, role } = u;
+  localStorage.setItem('hms_user', JSON.stringify({ id, name, email, role }));
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Optimistic initial render from the last-known user (display only, not a
   // security boundary — every real auth check happens server-side against
@@ -21,7 +28,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     authService.me()
       .then(({ data }) => {
         setUser(data.user);
-        localStorage.setItem('hms_user', JSON.stringify(data.user));
+        remember(data.user);
       })
       .catch(() => {
         setUser(null);
@@ -33,14 +40,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string) => {
     const { data } = await authService.login({ email, password });
     if (!data.success) throw new Error(data.message);
-    localStorage.setItem('hms_user', JSON.stringify(data.user));
+    remember(data.user);
     setUser(data.user);
   };
 
   const register = async (formData: object) => {
     const { data } = await authService.register(formData as RegisterData);
     if (!data.success) throw new Error(data.message);
-    localStorage.setItem('hms_user', JSON.stringify(data.user));
+    remember(data.user);
     setUser(data.user);
   };
 

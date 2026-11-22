@@ -4,6 +4,7 @@ const { inTransaction } = require('../utils/transaction');
 const { toDateStr, isWithinJoinWindow } = require('../utils/dates');
 const { notifyUsers } = require('../services/notificationService');
 const { videoAccess } = require('../utils/videoAccess');
+const { completeAppointment } = require('../services/appointmentService');
 
 // Patient owner or the appointment's doctor only; anyone else gets 404 so existence is not revealed.
 const APPT_SQL = `SELECT a.id, a.patient_id, a.status, a.payment_status, a.consultation_type, a.video_room,
@@ -84,20 +85,8 @@ const admit = async (req, res, next) => {
 
 const complete = async (req, res, next) => {
   try {
-    const patientId = await inTransaction(async (conn) => {
-      // Lock only the appointment row: a JOIN ... FOR UPDATE would also X-lock the doctor row.
-      const [[a]] = await conn.query(
-        'SELECT patient_id, status, doctor_id FROM appointments WHERE id = ? FOR UPDATE',
-        [req.params.appointmentId]
-      );
-      const [[d]] = a ? await conn.query('SELECT user_id FROM doctors WHERE id = ?', [a.doctor_id]) : [[]];
-      if (!a || !d || d.user_id !== req.user.id) throw new NotFoundError('Appointment not found.');
-      if (a.status !== 'pending') throw new ConflictError(`This appointment is already ${a.status}.`);
-      await conn.query("UPDATE appointments SET status = 'completed' WHERE id = ?", [req.params.appointmentId]);
-      return a.patient_id;
-    });
-
-    await notifyUsers([patientId], {
+    const a = await inTransaction((conn) => completeAppointment(conn, req.params.appointmentId, { role: 'doctor', userId: req.user.id }));
+    await notifyUsers([a.patient_id], {
       type: 'teleconsult', title: 'Consultation completed',
       message: 'Your video consultation was marked completed by the doctor.', link: '/patient/history',
     });

@@ -1,7 +1,8 @@
 const { z } = require('zod');
 const { emptyToUndefined, idParam } = require('./common');
 
-const APPOINTMENT_STATUSES = ['pending', 'completed', 'cancelled'];
+// A visit only moves pending -> completed or pending -> cancelled.
+const APPOINTMENT_STATUSES = ['completed', 'cancelled'];
 
 const getAppointmentsQuerySchema = z.object({
   date:    emptyToUndefined(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be in YYYY-MM-DD format.').optional()),
@@ -15,7 +16,6 @@ const updateAppointmentStatusSchema = z.object({
 
 const createPrescriptionSchema = z.object({
   appointmentId: idParam,
-  patientId: idParam,
   notes: emptyToUndefined(z.string().trim().max(5000).optional()),
 });
 

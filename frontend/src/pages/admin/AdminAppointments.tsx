@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Search, AlertCircle, Trash2, Calendar, Check } from 'lucide-react';
+import { getErrorMessage } from '../../utils/getErrorMessage';
 import { adminService } from '../../services/adminService';
 import { format } from 'date-fns';
 
@@ -58,8 +59,8 @@ export default function AdminAppointments() {
       await adminService.deleteAppointment(appt.id);
       setAppointments(prev => prev.filter(a => a.id !== appt.id));
       if (selectedId === appt.id) setSelectedId(null);
-    } catch {
-      setError('Failed to delete appointment.');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to delete appointment.'));
     }
   };
 
@@ -70,8 +71,8 @@ export default function AdminAppointments() {
       await adminService.updateAppointment(selected.id, { status: newStatus });
       setAppointments(prev => prev.map(a => a.id === selected.id ? { ...a, status: newStatus } : a));
       setNewStatus('');
-    } catch {
-      setError('Failed to update appointment status.');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to update appointment status.'));
     } finally {
       setUpdatingStatus(false);
     }
@@ -185,24 +186,26 @@ export default function AdminAppointments() {
               {/* Actions */}
               <div className="mt-6 pt-5 border-t border-gray-100 space-y-4">
                 {/* Update Status */}
-                <div className="flex items-center gap-3">
+                {/* A visit only moves from pending to completed or cancelled. */}
+                {selected.status === 'pending' && <div className="flex items-center gap-3">
                   <select
-                    value={newStatus || selected.status}
+                    value={newStatus}
                     onChange={e => setNewStatus(e.target.value)}
+                    aria-label="New status"
                     className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-teal-400"
                   >
-                    <option value="pending">Pending</option>
+                    <option value="">Change status…</option>
                     <option value="completed">Completed</option>
-                    <option value="cancelled">Cancelled</option>
+                    <option value="cancelled">Cancelled (frees the slot, notifies the patient)</option>
                   </select>
                   <button
                     onClick={handleStatusUpdate}
-                    disabled={!newStatus || newStatus === selected.status || updatingStatus}
+                    disabled={!newStatus || updatingStatus}
                     className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 transition"
                   >
                     <Check className="w-4 h-4" /> {updatingStatus ? 'Saving…' : 'Update Status'}
                   </button>
-                </div>
+                </div>}
 
                 {/* Delete */}
                 <button onClick={() => handleDelete(selected)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition">

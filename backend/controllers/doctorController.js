@@ -1,5 +1,7 @@
 const db = require('../config/db');
-const { NotFoundError, ForbiddenError } = require('../utils/errors');
+const { NotFoundError, ForbiddenError, ConflictError } = require('../utils/errors');
+const { inTransaction } = require('../utils/transaction');
+const { completeAppointment, cancelAppointment, afterCancel } = require('../services/appointmentService');
 const { invalidateCache, availabilityKey } = require('../utils/cache');
 
 // Helper: get doctor row from logged-in user
@@ -52,18 +54,11 @@ const getAppointments = async (req, res, next) => {
 // ─── PUT /api/doctor/appointment-status ────────────────────────────────────
 const updateAppointmentStatus = async (req, res, next) => {
   try {
-    const doctorId = await getDoctorId(req.user.id);
     const { appointmentId, status } = req.body;
-
-    const [result] = await db.query(
-      'UPDATE appointments SET status = ? WHERE id = ? AND doctor_id = ?',
-      [status, appointmentId, doctorId]
-    );
-
-    if (result.affectedRows === 0) {
-      throw new NotFoundError('Appointment not found or not yours.');
-    }
-
+    const actor = { role: 'doctor', userId: req.user.id };
+    const change = status === 'cancelled' ? cancelAppointment : completeAppointment;
+    const a = await inTransaction((conn) => change(conn, appointmentId, actor));
+    if (status === 'cancelled') await afterCancel(a, actor);
     res.json({ success: true, message: `Appointment status updated to "${status}".` });
   } catch (err) {
     next(err);
@@ -71,35 +66,42 @@ const updateAppointmentStatus = async (req, res, next) => {
 };
 
 // ─── POST /api/doctor/prescription ─────────────────────────────────────────
+// Saves or edits the prescription for one of this doctor's visits and completes the visit.
+// The patient always comes from the appointment, never from the request.
 const createPrescription = async (req, res, next) => {
   try {
     const doctorId = await getDoctorId(req.user.id);
-    const { appointmentId, patientId, notes } = req.body;
+    const { appointmentId, notes } = req.body;
 
-    // Verify appointment belongs to this doctor
-    const [apptRows] = await db.query(
-      'SELECT id FROM appointments WHERE id = ? AND doctor_id = ?',
-      [appointmentId, doctorId]
-    );
-    if (apptRows.length === 0) {
-      throw new ForbiddenError('Appointment not found or not yours.');
-    }
+    const fileUrl = await inTransaction(async (conn) => {
+      const [[appt]] = await conn.query(
+        'SELECT id, patient_id, status FROM appointments WHERE id = ? AND doctor_id = ? FOR UPDATE',
+        [appointmentId, doctorId]
+      );
+      if (!appt) throw new ForbiddenError('Appointment not found or not yours.');
+      if (appt.status === 'cancelled') throw new ConflictError('This appointment was cancelled.');
 
-    const fileUrl = req.file ? `/uploads/${req.file.filename}` : null;
+      await conn.query(
+        `INSERT INTO prescriptions (appointment_id, doctor_id, patient_id, notes)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE notes = VALUES(notes)`,
+        [appointmentId, doctorId, appt.patient_id, notes || null]
+      );
+      const [[p]] = await conn.query('SELECT id, file_url FROM prescriptions WHERE appointment_id = ?', [appointmentId]);
+      if (appt.status === 'pending') await conn.query("UPDATE appointments SET status = 'completed' WHERE id = ?", [appointmentId]);
 
-    // Upsert prescription
-    await db.query(
-      `INSERT INTO prescriptions (appointment_id, doctor_id, patient_id, notes, file_url)
-       VALUES (?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE notes = VALUES(notes), file_url = VALUES(file_url)`,
-      [appointmentId, doctorId, patientId, notes || null, fileUrl]
-    );
-
-    // Mark appointment as completed
-    await db.query(
-      "UPDATE appointments SET status = 'completed' WHERE id = ?",
-      [appointmentId]
-    );
+      // A save without a file keeps the earlier file.
+      if (!req.upload) return p.file_url;
+      const { mime, name, buffer } = req.upload;
+      await conn.query(
+        `INSERT INTO prescription_files (prescription_id, mime, name, size_bytes, data) VALUES (?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE mime = VALUES(mime), name = VALUES(name), size_bytes = VALUES(size_bytes), data = VALUES(data)`,
+        [p.id, mime, name, buffer.length, buffer]
+      );
+      const url = `/api/files/prescriptions/${p.id}`;
+      await conn.query('UPDATE prescriptions SET file_url = ? WHERE id = ?', [url, p.id]);
+      return url;
+    });
 
     res.status(201).json({ success: true, message: 'Prescription saved and appointment marked completed.', fileUrl });
   } catch (err) {

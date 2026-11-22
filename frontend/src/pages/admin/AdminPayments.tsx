@@ -60,7 +60,7 @@ export default function AdminPayments() {
                   <td className="p-3">{r.doctor_name}</td>
                   <td className="p-3">{formatDbDate(r.date)} {r.time}</td>
                   <td className="p-3">{rupees(r.amount_paise)}</td>
-                  <td className="p-3"><span className={`text-xs font-medium px-2 py-1 rounded-full capitalize ${statusBadge[r.status] ?? ''}`}>{r.status}</span></td>
+                  <td className="p-3"><span className={`text-xs font-medium px-2 py-1 rounded-full capitalize ${statusBadge[r.status] ?? ''}`}>{r.status.replace('_', ' ')}</span></td>
                 </tr>
               ))}
             </tbody>

@@ -82,7 +82,7 @@ export default function SlotManagement({ doctors }: { doctors: Doctor[] }) {
     if (!confirm(`Block all available slots for ${selectedDate}? Booked slots will be unaffected.`)) return;
     try {
       const res = await adminService.blockDay(Number(selectedDoctor), selectedDate);
-      flash(`Deleted ${res.data.deleted} slot(s). Reload to refresh grid.`);
+      flash(`Blocked ${res.data.blocked} slot(s). Reload to refresh grid.`);
       setSlots([]);
     } catch (err) {
       flash(getErrorMessage(err, 'Failed to block day.'), true);

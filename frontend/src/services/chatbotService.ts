@@ -45,18 +45,24 @@ export const chatbotService = {
   sendMessage: (message: string, history: { role: string; content: string }[]) =>
     api.post<{ success: boolean; data: ChatResponse }>('/chatbot/message', { message, history }),
 
+  // Doctors, slots and booking use the same endpoints (and booking rules) as the booking page.
   getDoctors: (specialization?: string) =>
-    api.get<{ success: boolean; data: ChatDoctor[] }>('/chatbot/doctors', {
+    api.get<{ success: boolean; data: ChatDoctor[] }>('/doctors', {
       params: specialization ? { specialization } : {},
     }),
 
-  getSlots: (doctorId: number, date: string) =>
-    api.get<{ success: boolean; data: ChatSlot[] }>('/chatbot/slots', {
+  // Only slots a patient can actually book: free, not blocked by the admin, and not already past.
+  getSlots: async (doctorId: number, date: string) => {
+    const res = await api.get<{ success: boolean; data: (ChatSlot & { is_booked: number; is_available: number })[] }>('/slots', {
       params: { doctorId, date },
-    }),
+    });
+    const now = Date.now();
+    const bookable = res.data.data.filter((s) => !s.is_booked && s.is_available && new Date(`${date}T${s.time}`).getTime() > now);
+    return { data: { ...res.data, data: bookable as ChatSlot[] } };
+  },
 
   bookAppointment: (doctorId: number, slotId: number, reason?: string) =>
-    api.post('/chatbot/book', { doctorId, slotId, reason }),
+    api.post('/appointments/book', { doctorId, slotId, reason }),
 
   getAppointments: (filter: string = 'all') =>
     api.get<{ success: boolean; data: ChatAppointment[] }>('/chatbot/appointments', {

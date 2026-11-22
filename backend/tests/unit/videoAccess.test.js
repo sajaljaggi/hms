@@ -21,6 +21,7 @@ describe('videoAccess', () => {
     expect(header.kid).toBe(env.JAAS_KID);
     expect(payload).toMatchObject({ aud: 'jitsi', iss: 'chat', sub: env.JAAS_APP_ID, room: 'hms-abc' });
     expect(payload.context.user).toMatchObject({ id: '9', name: 'Dr Who', moderator: 'true' });
+    expect(payload.context.features.recording).toBe(false);
     expect(payload.exp - payload.nbf).toBeLessThanOrEqual(2 * 3600 + 10);
 
     const pat = jwt.decode(videoAccess('hms-abc', user, false, env).jwt);

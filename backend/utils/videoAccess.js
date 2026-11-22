@@ -17,7 +17,8 @@ function videoAccess(room, user, isModerator, env = process.env) {
     aud: 'jitsi', iss: 'chat', sub: jaas.appId, room, nbf: now - 10,
     context: {
       user: { id: String(user.id), name: user.name, email: user.email, moderator: isModerator ? 'true' : 'false' },
-      features: { livestreaming: 'false', recording: 'false', transcription: 'false', 'outbound-call': 'false' },
+      // Format per developer.8x8.com/jaas/docs/api-keys-jwt: moderator is a string, features are booleans.
+      features: { livestreaming: false, recording: false, transcription: false, 'outbound-call': false },
     },
   }, jaas.privateKey, { algorithm: 'RS256', keyid: jaas.kid, expiresIn: '2h' });
 

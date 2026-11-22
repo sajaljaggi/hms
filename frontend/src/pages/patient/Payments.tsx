@@ -36,7 +36,7 @@ export default function Payments() {
                   <td className="p-3">{formatDbDate(r.date)} {r.time}</td>
                   <td className="p-3">{r.doctor_name}<span className="block text-xs text-gray-400">{r.specialization}</span></td>
                   <td className="p-3">₹{(r.amount_paise / 100).toFixed(2)}</td>
-                  <td className="p-3"><span className={`text-xs font-medium px-2 py-1 rounded-full capitalize ${statusBadge[r.status] ?? ''}`}>{r.status}</span></td>
+                  <td className="p-3"><span className={`text-xs font-medium px-2 py-1 rounded-full capitalize ${statusBadge[r.status] ?? ''}`}>{r.status.replace('_', ' ')}</span></td>
                 </tr>
               ))}
             </tbody>

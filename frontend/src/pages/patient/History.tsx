@@ -14,7 +14,7 @@ interface Appointment {
   prescription_notes?: string; prescription_file?: string;
   my_rating?: number | null;
   payment_status: 'unpaid' | 'paid'; consultation_type: 'in_person' | 'video';
-  can_pay: number; // 0/1 from the server: unpaid, pending, and not past its time
+  can_pay: number; can_cancel: number; // 0/1 from the server: unpaid, pending, and not past its time
 }
 
 const statusColors: Record<string, string> = {
@@ -110,6 +110,24 @@ export default function History() {
     .catch(() => setError('Could not load appointment history.'))
     .finally(() => setLoading(false));
   const { pay, busyId, notice, element: payModal } = usePayment(() => { void load(); });
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [cancelNotice, setCancelNotice] = useState('');
+
+  const cancel = async (appt: Appointment) => {
+    if (cancellingId !== null) return;
+    const refundNote = appt.payment_status === 'paid' ? ' Your payment will be refunded.' : '';
+    if (!confirm(`Cancel your appointment with Dr. ${appt.doctor_name}?${refundNote}`)) return;
+    setCancellingId(appt.id); setCancelNotice('');
+    try {
+      const res = await patientService.cancelAppointment(appt.id);
+      setCancelNotice(res.data.message);
+      await load();
+    } catch (err) {
+      setCancelNotice(getErrorMessage(err, 'Could not cancel the appointment.'));
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   useEffect(() => { void load(); }, []);
 
@@ -181,6 +199,7 @@ export default function History() {
         </div>
       </div>
 
+      {cancelNotice && <div role="status" className="text-sm rounded-lg p-3 text-gray-700 bg-gray-50 border">{cancelNotice}</div>}
       {notice && (
         <div role="status" className={`text-sm rounded-lg p-3 ${notice.type === 'success' ? 'text-green-700 bg-green-50' : 'text-red-600 bg-red-50'}`}>{notice.text}</div>
       )}
@@ -242,6 +261,12 @@ export default function History() {
                   <Link to={`/consult/${appt.id}`} className="flex items-center gap-1 text-xs font-medium bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700">
                     <Video className="w-3.5 h-3.5" /> Join video
                   </Link>
+                )}
+                {!!appt.can_cancel && (
+                  <button onClick={() => cancel(appt)} disabled={cancellingId !== null}
+                    className="text-xs font-medium border border-red-200 text-red-600 px-3 py-1.5 rounded-md hover:bg-red-50 disabled:opacity-60">
+                    {cancellingId === appt.id ? 'Cancelling…' : 'Cancel'}
+                  </button>
                 )}
                 {appt.prescription_file && (
                   <a href={backendFileUrl(appt.prescription_file)} target="_blank" rel="noopener noreferrer"

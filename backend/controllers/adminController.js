@@ -5,6 +5,7 @@ const { NotFoundError, ConflictError, ValidationError } = require('../utils/erro
 const { invalidateCache, invalidateByPattern, availabilityKey, availabilityKeyPattern } = require('../utils/cache');
 const { toDateStr } = require('../utils/dates');
 const { inTransaction } = require('../utils/transaction');
+const { completeAppointment, cancelAppointment, afterCancel } = require('../services/appointmentService');
 
 // ─── GET /api/admin/users ───────────────────────────────────────────────────
 const getAllUsers = async (req, res, next) => {
@@ -94,6 +95,12 @@ const deleteUser = async (req, res, next) => {
         'SELECT id FROM bed_allocations WHERE patient_id = ? AND discharged_at IS NULL LIMIT 1', [id]
       );
       if (open) throw new ConflictError('Discharge the patient from their bed first.');
+      // Payment records outlive the user: their own, or (for a doctor) those of their visits.
+      const PAYMENTS_OF_USER = `FROM payments p JOIN appointments a ON a.id = p.appointment_id
+        LEFT JOIN doctors d ON d.id = a.doctor_id WHERE (p.patient_id = ? OR d.user_id = ?)`;
+      const [[money]] = await conn.query(`SELECT p.id ${PAYMENTS_OF_USER} AND p.status IN ('paid', 'refund_due') LIMIT 1`, [id, id]);
+      if (money) throw new ConflictError('This user has payment records and cannot be deleted.');
+      await conn.query(`DELETE p ${PAYMENTS_OF_USER}`, [id, id]);
       await conn.query('DELETE FROM users WHERE id = ?', [id]);
     });
 
@@ -103,39 +110,43 @@ const deleteUser = async (req, res, next) => {
   }
 };
 
+// Stores an uploaded photo in the DB; profile_image becomes a version token for the image URL (?v=).
+async function saveDoctorImage(conn, doctorId, upload) {
+  if (!upload) return;
+  await conn.query(
+    'INSERT INTO doctor_images (doctor_id, mime, data) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE mime = VALUES(mime), data = VALUES(data)',
+    [doctorId, upload.mime, upload.buffer]
+  );
+  await conn.query('UPDATE doctors SET profile_image = ? WHERE id = ?', [String(Date.now()), doctorId]);
+}
+
 // ─── POST /api/admin/doctor ─────────────────────────────────────────────────
 const createDoctor = async (req, res, next) => {
   try {
     const { name, email, password, specialization, fees, phone } = req.body;
-
-    const [existing] = await db.query('SELECT id FROM users WHERE email = ?', [email]);
-    if (existing.length > 0) {
-      throw new ConflictError('Email already registered.');
-    }
-
     const hashed = await bcrypt.hash(password, 10);
 
-    const [userResult] = await db.query(
-      "INSERT INTO users (name, email, password, role, phone) VALUES (?, ?, ?, 'doctor', ?)",
-      [name, email, hashed, phone || null]
-    );
-
-    const profileImage = req.file ? req.file.filename : null;
-    const [doctorResult] = await db.query(
-      'INSERT INTO doctors (user_id, specialization, fees, profile_image) VALUES (?, ?, ?, ?)',
-      [userResult.insertId, specialization, fees, profileImage]
-    );
+    // User, doctor row and photo together, so a failure never leaves a doctor login without a profile.
+    const newDoctorId = await inTransaction(async (conn) => {
+      const [existing] = await conn.query('SELECT id FROM users WHERE email = ?', [email]);
+      if (existing.length > 0) throw new ConflictError('Email already registered.');
+      const [userResult] = await conn.query(
+        "INSERT INTO users (name, email, password, role, phone) VALUES (?, ?, ?, 'doctor', ?)",
+        [name, email, hashed, phone || null]
+      );
+      const [doctorResult] = await conn.query(
+        'INSERT INTO doctors (user_id, specialization, fees) VALUES (?, ?, ?)',
+        [userResult.insertId, specialization, fees]
+      );
+      await saveDoctorImage(conn, doctorResult.insertId, req.upload);
+      return doctorResult.insertId;
+    });
 
     // Auto-generate slots for the next 14 days
-    const newDoctorId = doctorResult.insertId;
     const { format, addDays } = require('date-fns');
     const today = new Date();
-    const slotPromises = [];
-    for (let i = 0; i < 14; i++) {
-      const date = format(addDays(today, i), 'yyyy-MM-dd');
-      slotPromises.push(generateSlotsForDoctorDate(newDoctorId, date));
-    }
-    await Promise.all(slotPromises);
+    await Promise.all(Array.from({ length: 14 }, (_, i) =>
+      generateSlotsForDoctorDate(newDoctorId, format(addDays(today, i), 'yyyy-MM-dd'))));
 
     res.status(201).json({ success: true, message: 'Doctor account created successfully.' });
   } catch (err) {
@@ -187,12 +198,14 @@ const toggleSlot = async (req, res, next) => {
 const blockDay = async (req, res, next) => {
   try {
     const { doctorId, date } = req.body;
+    // Block, never delete: the startup and midnight slot generator re-creates missing slots.
+    await generateSlotsForDoctorDate(doctorId, date);
     const [result] = await db.query(
-      'DELETE FROM doctor_slots WHERE doctor_id = ? AND date = ? AND is_booked = 0',
+      'UPDATE doctor_slots SET is_available = 0 WHERE doctor_id = ? AND date = ? AND is_booked = 0',
       [doctorId, date]
     );
     await invalidateCache(availabilityKey(doctorId, date));
-    res.json({ success: true, deleted: result.affectedRows });
+    res.json({ success: true, blocked: result.affectedRows });
   } catch (err) {
     next(err);
   }
@@ -216,15 +229,16 @@ const generateSlotsAdmin = async (req, res, next) => {
 };
 
 // ─── PATCH /api/admin/users/:id ─────────────────────────────────────────────
+// Only the fields sent change; an empty phone, city or address clears it.
 const updateUser = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const { name, phone, city, address } = req.body;
-    await db.query(
-      'UPDATE users SET name=?, phone=?, city=?, address=? WHERE id=?',
-      [name, phone || null, city || null, address || null, id]
+    const fields = ['name', 'phone', 'city', 'address'].filter((f) => req.body[f] !== undefined);
+    const [result] = await db.query(
+      `UPDATE users SET ${fields.map((f) => `${f} = ?`).join(', ')} WHERE id = ?`,
+      [...fields.map((f) => req.body[f] || null), req.params.id]
     );
-    res.json({ success: true, message: 'Patient updated.' });
+    if (result.affectedRows === 0) throw new NotFoundError('User not found.');
+    res.json({ success: true, message: 'User updated.' });
   } catch (err) {
     next(err);
   }
@@ -235,23 +249,13 @@ const updateDoctor = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { name, phone, specialization, fees } = req.body;
-    const [[doctor]] = await db.query('SELECT user_id, profile_image FROM doctors WHERE id=?', [id]);
-    if (!doctor) throw new NotFoundError('Doctor not found.');
-    await db.query('UPDATE users SET name=?, phone=? WHERE id=?', [name, phone || null, doctor.user_id]);
-
-    // Handle optional image upload
-    if (req.file) {
-      // Delete old image if it exists
-      if (doctor.profile_image) {
-        const fs = require('fs');
-        const path = require('path');
-        const oldPath = path.join(__dirname, '..', 'uploads', 'doctors', doctor.profile_image);
-        fs.unlink(oldPath, () => {}); // ignore errors
-      }
-      await db.query('UPDATE doctors SET specialization=?, fees=?, profile_image=? WHERE id=?', [specialization, fees, req.file.filename, id]);
-    } else {
-      await db.query('UPDATE doctors SET specialization=?, fees=? WHERE id=?', [specialization, fees, id]);
-    }
+    await inTransaction(async (conn) => {
+      const [[doctor]] = await conn.query('SELECT user_id FROM doctors WHERE id = ?', [id]);
+      if (!doctor) throw new NotFoundError('Doctor not found.');
+      await conn.query('UPDATE users SET name = ?, phone = ? WHERE id = ?', [name, phone || null, doctor.user_id]);
+      await conn.query('UPDATE doctors SET specialization = ?, fees = ? WHERE id = ?', [specialization, fees, id]);
+      await saveDoctorImage(conn, id, req.upload);
+    });
     res.json({ success: true, message: 'Doctor updated.' });
   } catch (err) {
     next(err);
@@ -265,14 +269,17 @@ const deleteAppointment = async (req, res, next) => {
   try {
     await conn.beginTransaction();
     const [[appt]] = await conn.query(
-      `SELECT a.slot_id, a.doctor_id, ds.date
+      `SELECT a.slot_id, a.doctor_id, a.active_slot_id, ds.date
        FROM appointments a JOIN doctor_slots ds ON a.slot_id = ds.id
-       WHERE a.id = ?`,
+       WHERE a.id = ? FOR UPDATE`,
       [id]
     );
     if (!appt) throw new NotFoundError('Appointment not found.');
+    const [[money]] = await conn.query("SELECT id FROM payments WHERE appointment_id = ? AND status IN ('paid', 'refund_due')", [id]);
+    if (money) throw new ConflictError('This appointment has a payment record. Cancel it instead of deleting it.');
+    await conn.query('DELETE FROM payments WHERE appointment_id = ?', [id]);
     await conn.query('DELETE FROM appointments WHERE id=?', [id]);
-    await conn.query('UPDATE doctor_slots SET is_booked=0 WHERE id=?', [appt.slot_id]);
+    if (appt.active_slot_id) await conn.query('UPDATE doctor_slots SET is_booked=0 WHERE id=?', [appt.slot_id]);
     await conn.commit();
     await invalidateCache(availabilityKey(appt.doctor_id, toDateStr(appt.date)));
     res.json({ success: true, message: 'Appointment deleted and slot freed.' });
@@ -287,9 +294,11 @@ const deleteAppointment = async (req, res, next) => {
 // ─── PATCH /api/admin/appointments/:id ────────────────────────────────────
 const updateAppointment = async (req, res, next) => {
   try {
-    const { id } = req.params;
     const { status } = req.body;
-    await db.query('UPDATE appointments SET status=? WHERE id=?', [status, id]);
+    const actor = { role: 'admin', userId: req.user.id };
+    const change = status === 'cancelled' ? cancelAppointment : completeAppointment;
+    const a = await inTransaction((conn) => change(conn, req.params.id, actor));
+    if (status === 'cancelled') await afterCancel(a, actor);
     res.json({ success: true, message: 'Appointment status updated.' });
   } catch (err) {
     next(err);

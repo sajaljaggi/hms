@@ -8,7 +8,7 @@ import { patientService } from '../../services/patientService';
 import { paymentService } from '../../services/paymentService';
 
 vi.mock('../../services/patientService', () => ({
-  patientService: { getAppointments: vi.fn(), getDoctors: vi.fn(), getAvailableSlots: vi.fn(), bookAppointment: vi.fn() },
+  patientService: { getAppointments: vi.fn(), getDoctors: vi.fn(), getAvailableSlots: vi.fn(), bookAppointment: vi.fn(), cancelAppointment: vi.fn() },
 }));
 vi.mock('../../services/paymentService', () => ({
   paymentService: { createOrder: vi.fn(), verify: vi.fn(), failOrder: vi.fn() },
@@ -22,6 +22,25 @@ const appt = (id: number, over: object) => ({
 beforeEach(() => { vi.resetAllMocks(); });
 
 describe('History', () => {
+  it('lets the patient cancel an upcoming visit after confirming, then reloads', async () => {
+    vi.mocked(patientService.getAppointments).mockResolvedValue({ data: { data: [
+      appt(1, { can_cancel: 1, payment_status: 'paid', can_pay: 0 }),
+      appt(2, { can_cancel: 0, status: 'completed', can_pay: 0 }),
+    ] } } as never);
+    vi.mocked(patientService.cancelAppointment).mockResolvedValue({ data: { message: 'Appointment cancelled. Your payment will be refunded.' } } as never);
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<MemoryRouter><History /></MemoryRouter>);
+    await screen.findByText('Dr 1');
+    const buttons = screen.getAllByRole('button', { name: 'Cancel' });
+    expect(buttons).toHaveLength(1);
+    await userEvent.click(buttons[0]);
+    expect(confirmSpy.mock.calls[0][0]).toMatch(/refunded/);
+    expect(patientService.cancelAppointment).toHaveBeenCalledWith(1);
+    expect(await screen.findByText(/payment will be refunded/)).toBeInTheDocument();
+    expect(patientService.getAppointments).toHaveBeenCalledTimes(2);
+    confirmSpy.mockRestore();
+  });
+
   it('shows Pay only where the server says can_pay and Join only for paid video pending', async () => {
     vi.mocked(patientService.getAppointments).mockResolvedValue({ data: { data: [
       appt(1, {}),

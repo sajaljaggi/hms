@@ -1,9 +1,5 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const db = require('../config/db');
-const { NotFoundError, ConflictError } = require('../utils/errors');
-const { invalidateCache, availabilityKey } = require('../utils/cache');
-const { toDateStr } = require('../utils/dates');
-const { notifyBooking } = require('../services/notificationService');
 
 // ── Gemini Setup ──────────────────────────────────────────────────────────────
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -136,104 +132,6 @@ const sendMessage = async (req, res) => {
   }
 };
 
-// ── GET /api/chatbot/doctors?specialization= ────────────────────────────────
-const getChatbotDoctors = async (req, res, next) => {
-  try {
-    const { specialization } = req.query;
-
-    let sql = `
-      SELECT d.id, u.name, d.specialization, d.fees
-      FROM doctors d
-      JOIN users u ON d.user_id = u.id
-    `;
-    const params = [];
-
-    if (specialization) {
-      sql += ' WHERE d.specialization = ?';
-      params.push(specialization);
-    }
-
-    sql += ' ORDER BY u.name ASC';
-
-    const [rows] = await db.query(sql, params);
-    res.json({ success: true, data: rows });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// ── GET /api/chatbot/slots?doctorId=&date= ──────────────────────────────────
-const getChatbotSlots = async (req, res, next) => {
-  try {
-    const { doctorId, date } = req.query;
-
-    const [rows] = await db.query(
-      `SELECT id, date, time
-       FROM doctor_slots
-       WHERE doctor_id = ? AND date = ? AND is_booked = 0
-       ORDER BY time ASC`,
-      [doctorId, date]
-    );
-
-    res.json({ success: true, data: rows });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// ── POST /api/chatbot/book (authenticated — patient only) ───────────────────
-const chatbotBook = async (req, res, next) => {
-  const conn = await db.getConnection();
-  try {
-    const { doctorId, slotId, reason } = req.body;
-    const patientId = req.user.id;
-
-    await conn.beginTransaction();
-
-    // Lock the slot row
-    const [slotRows] = await conn.query(
-      'SELECT id, date, time, is_booked FROM doctor_slots WHERE id = ? AND doctor_id = ? FOR UPDATE',
-      [slotId, doctorId]
-    );
-
-    if (slotRows.length === 0) {
-      throw new NotFoundError('Slot not found.');
-    }
-
-    if (slotRows[0].is_booked) {
-      throw new ConflictError('This slot is already booked. Please choose another.');
-    }
-
-    // Mark slot as booked
-    await conn.query('UPDATE doctor_slots SET is_booked = 1 WHERE id = ?', [slotId]);
-
-    // Create appointment
-    const [result] = await conn.query(
-      `INSERT INTO appointments (patient_id, doctor_id, slot_id, status, reason)
-       VALUES (?, ?, ?, 'pending', ?)`,
-      [patientId, doctorId, slotId, reason || null]
-    );
-
-    await conn.commit();
-
-    const dateStr = toDateStr(slotRows[0].date);
-    await invalidateCache(availabilityKey(doctorId, dateStr));
-    await notifyBooking({ patientId, doctorId, dateStr, time: slotRows[0].time });
-
-    res.status(201).json({
-      success: true,
-      message: 'Appointment booked successfully via MediBot! 🎉',
-      appointmentId: result.insertId,
-    });
-  } catch (err) {
-    await conn.rollback();
-    next(err);
-  } finally {
-    conn.release();
-  }
-};
-
-// ── GET /api/chatbot/appointments (authenticated — patient only) ────────────
 const getPatientAppointments = async (req, res, next) => {
   try {
     const patientId = req.user.id;
@@ -268,4 +166,4 @@ const getPatientAppointments = async (req, res, next) => {
   }
 };
 
-module.exports = { sendMessage, getChatbotDoctors, getChatbotSlots, chatbotBook, getPatientAppointments };
+module.exports = { sendMessage, getPatientAppointments };

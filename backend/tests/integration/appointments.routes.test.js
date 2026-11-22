@@ -106,15 +106,31 @@ describe('POST /api/appointments/book', () => {
       .set('X-CSRF-Token', patient.csrfToken)
       .send({ doctorId, slotId: seeded.slotAId });
 
+    // A different patient: one patient may hold only one visit per doctor per day.
+    const neighbor = await registerAndLoginPatient();
     const bookingB = await request(app)
       .post('/api/appointments/book')
-      .set('Cookie', patient.cookies)
-      .set('X-CSRF-Token', patient.csrfToken)
+      .set('Cookie', neighbor.cookies)
+      .set('X-CSRF-Token', neighbor.csrfToken)
       .send({ doctorId, slotId: seeded.slotBId });
 
     expect(bookingA.status).toBe(201);
     expect(bookingB.status).toBe(201);
     expect(bookingA.body.appointmentId).not.toBe(bookingB.body.appointmentId);
+
+    // The same patient's second visit with this doctor that day is refused.
+    const [slotC] = await db.query(
+      'INSERT INTO doctor_slots (doctor_id, date, time, is_booked, is_available) VALUES (?, ?, ?, 0, 1)',
+      [doctorId, tomorrowStr(), '09:30:00']
+    );
+    const again = await request(app)
+      .post('/api/appointments/book')
+      .set('Cookie', patient.cookies)
+      .set('X-CSRF-Token', patient.csrfToken)
+      .send({ doctorId, slotId: slotC.insertId });
+    expect(again.status).toBe(409);
+    expect(again.body.error.code).toBe('BOOKING_LIMIT');
+    await db.query('DELETE FROM users WHERE email = ?', [neighbor.email]);
   });
 
   test('booking a non-existent slot returns 404', async () => {
@@ -232,9 +248,9 @@ describe('booking notifications and video gating', () => {
     return r.insertId;
   }
 
-  test('chatbot booking notifies the patient and the doctor', async () => {
+  test('booking notifies the patient and the doctor', async () => {
     const slotId = await seedSlot('10:00:00');
-    const res = await authed(request(app).post, '/api/chatbot/book', patient).send({ doctorId: doctor.doctorId, slotId });
+    const res = await authed(request(app).post, '/api/appointments/book', patient).send({ doctorId: doctor.doctorId, slotId });
     expect(res.status).toBe(201);
 
     const [rows] = await db.query(
