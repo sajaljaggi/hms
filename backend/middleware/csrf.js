@@ -1,5 +1,6 @@
 const crypto = require('crypto');
-const { ForbiddenError } = require('../utils/errors');
+const { AppError } = require('../utils/errors');
+const { REFRESH_TOKEN_TTL_DAYS } = require('../utils/cookies');
 
 const CSRF_COOKIE = 'csrf_token';
 const CSRF_HEADER = 'x-csrf-token';
@@ -25,6 +26,9 @@ const issueCsrfToken = (req, res, next) => {
       secure: isProd,
       sameSite: isProd ? 'none' : 'lax',
       path: '/',
+      // As long as the refresh cookie: a session cookie ended with the browser while the login lived on,
+      // so the first requests after a restart raced each other for a new token.
+      maxAge: REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
     });
     // Make it visible to verifyCsrf if both run in the same request chain.
     req.cookies[CSRF_COOKIE] = token;
@@ -43,7 +47,8 @@ const verifyCsrf = (req, res, next) => {
   const headerToken  = req.headers[CSRF_HEADER];
 
   if (!cookieToken || !headerToken || cookieToken !== headerToken) {
-    return next(new ForbiddenError('Invalid or missing CSRF token.'));
+    // Own code so the client can tell this apart and retry once (see frontend/src/services/api.ts).
+    return next(new AppError('Invalid or missing CSRF token.', 403, 'CSRF_INVALID'));
   }
   next();
 };

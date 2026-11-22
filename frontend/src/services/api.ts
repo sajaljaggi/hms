@@ -42,6 +42,13 @@ api.interceptors.response.use(
     const originalRequest = error.config;
     const url = originalRequest?.url ?? '';
 
+    // Two first requests without a CSRF cookie each get a new token, and the later one overwrites the
+    // cookie. A request sent in between carries the old token: retry it once with the current cookie.
+    if (error.response?.status === 403 && error.response?.data?.error?.code === 'CSRF_INVALID' && !originalRequest?._csrfRetry) {
+      originalRequest._csrfRetry = true;
+      return api(originalRequest);
+    }
+
     const shouldAttemptRefresh =
       error.response?.status === 401 &&
       !originalRequest?._retry &&
@@ -67,7 +74,7 @@ api.interceptors.response.use(
         // routes already redirect themselves via Layout's isAuthenticated
         // check, so this only needs to catch a session dying mid-use on one
         // of them.
-        const isProtectedRoute = ['/patient', '/doctor', '/admin'].some((prefix) =>
+        const isProtectedRoute = ['/patient', '/doctor', '/admin', '/consult'].some((prefix) =>
           window.location.pathname.startsWith(prefix)
         );
         if (isProtectedRoute && window.location.pathname !== '/login') {

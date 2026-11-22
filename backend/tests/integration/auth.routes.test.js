@@ -108,6 +108,6 @@ describe('POST /api/auth/register and /api/auth/login', () => {
       .send({ email, password });
 
     expect(res.status).toBe(403);
-    expect(res.body.error.code).toBe('FORBIDDEN');
+    expect(res.body.error.code).toBe('CSRF_INVALID');
   });
 });
