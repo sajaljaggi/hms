@@ -6,6 +6,9 @@
  * Uses the doctors already in the database. Runs once (demo patients use @demo.example.com) and in one
  * transaction, so a failure leaves nothing half-written. Demo patients log in with password "password".
  *
+ * A second step (also run once) gives the existing non-demo patients a history of visits with detailed
+ * prescriptions, and attaches a prescription PDF to nearly every prescription.
+ *
  * Usage: node database/seedDemo.js   (reads backend/.env)
  */
 const path = require('path');
@@ -353,7 +356,208 @@ async function main() {
   }
 }
 
+// ── Patient records: real patients' history, detailed prescriptions, prescription PDFs ──────────────
+
+const RX = {
+  Cardiology: [
+    { dx: 'Stage 1 hypertension', meds: ['Tab. Amlodipine 5 mg - once daily, morning - 30 days', 'Tab. Ecosprin 75 mg - once daily after lunch - 30 days'], advice: 'Low-salt diet, 30 min brisk walk daily. Keep a BP log.', review: 'Review in 4 weeks with BP log and lipid profile.' },
+    { dx: 'Palpitations, likely anxiety-related; ECG normal', meds: ['Tab. Propranolol 10 mg - twice daily - 14 days'], advice: 'Limit caffeine. Practise slow breathing when palpitations start.', review: 'Holter monitoring if symptoms persist. Review in 2 weeks.' },
+    { dx: 'Dyslipidaemia', meds: ['Tab. Atorvastatin 10 mg - at night - 90 days'], advice: 'Avoid fried food, include oats and fruits.', review: 'Repeat lipid profile after 6 weeks.' },
+  ],
+  Dermatology: [
+    { dx: 'Acne vulgaris (moderate)', meds: ['Adapalene 0.1% gel - thin layer at night', 'Clindamycin 1% gel - morning', 'Sunscreen SPF 50 - daily'], advice: 'Do not squeeze lesions. Use a gentle face wash twice daily.', review: 'Review in 6 weeks.' },
+    { dx: 'Contact dermatitis, forearms', meds: ['Tab. Cetirizine 10 mg - at night - 7 days', 'Mometasone 0.1% cream - twice daily - 7 days'], advice: 'Avoid the new detergent. Moisturise twice daily.', review: 'Review if not better in 1 week.' },
+  ],
+  Neurology: [
+    { dx: 'Migraine without aura', meds: ['Tab. Propranolol 20 mg - twice daily - 30 days', 'Tab. Naproxen 500 mg - at onset of headache, max 2/day'], advice: 'Regular sleep, avoid skipping meals, limit screen time. Keep a headache diary.', review: 'Review in 4 weeks with the diary.' },
+    { dx: 'Peripheral neuropathy, vitamin B12 deficiency', meds: ['Inj. Methylcobalamin 1500 mcg - weekly x 4', 'Tab. Vitamin B complex - once daily - 30 days'], advice: 'Foot care, avoid walking barefoot.', review: 'Repeat B12 after 3 months.' },
+  ],
+  Orthopedics: [
+    { dx: 'Early osteoarthritis, right knee', meds: ['Tab. Paracetamol 650 mg - when needed, max 3/day', 'Diclofenac gel - local application twice daily'], advice: 'Quadriceps strengthening exercises. Physiotherapy 3 times a week. Reduce weight.', review: 'Review in 3 weeks.' },
+    { dx: 'Mechanical low back pain', meds: ['Tab. Aceclofenac 100 mg - twice daily after food - 5 days', 'Tab. Thiocolchicoside 4 mg - twice daily - 5 days'], advice: 'Hot fomentation, core strengthening, ergonomic chair at work.', review: 'MRI if pain persists beyond 4 weeks.' },
+  ],
+  'General Medicine': [
+    { dx: 'Acute viral fever', meds: ['Tab. Paracetamol 650 mg - every 6 hours if fever - 3 days', 'ORS - 1 sachet in 1 L water, sip through the day'], advice: 'Rest, plenty of fluids. Check temperature twice a day.', review: 'Return if fever lasts beyond 3 days or new symptoms.' },
+    { dx: 'Acid peptic disease', meds: ['Tab. Pantoprazole 40 mg - before breakfast - 14 days', 'Syp. Antacid 10 ml - after meals when needed'], advice: 'Small frequent meals, avoid spicy food and late dinners.', review: 'Review in 2 weeks.' },
+    { dx: 'Routine health check-up', meds: ['Tab. Vitamin D3 60000 IU - once a week - 8 weeks'], advice: 'Blood reports within normal limits except low vitamin D. 20 min morning sunlight.', review: 'Annual check-up.' },
+  ],
+};
+const rxNotes = (rx) => `Diagnosis: ${rx.dx}\n\nRx:\n${rx.meds.map((m, i) => `${i + 1}. ${m}`).join('\n')}\n\nAdvice: ${rx.advice}\nFollow-up: ${rx.review}`;
+
+// A one-page prescription PDF on hospital letterhead. Plain PDF 1.4 with the built-in Helvetica fonts.
+function prescriptionPdf({ doctor, specialization, patient, age, gender, date, notes, rxNo }) {
+  const ascii = (t) => String(t).replace(/[^\x20-\x7e]/g, '-').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  const lines = [];
+  // bold: true, false, or 'label' (only a leading 'Diagnosis:' / 'Rx:' / 'Advice:' / 'Follow-up:' is bold)
+  const add = (text, size = 10, bold = false, gap = 6) => lines.push({ text, size, bold, gap });
+  add('Care & Cure Hospital', 18, true, 4);
+  add('DJ Block (Newtown), Action Area I, New Town, West Bengal 700156  |  +91 33 2476 5102', 8, false, 18);
+  add(`${doctor}  -  ${specialization}`, 11, true, 4);
+  add(`Rx No. ${rxNo}    Date: ${date}`, 9, false, 14);
+  add(`Patient: ${patient}${age ? `    Age: ${age}` : ''}${gender ? `    Sex: ${gender}` : ''}`, 10, true, 16);
+  for (const raw of String(notes).split('\n')) {
+    // Wrap long lines at word boundaries, ~90 characters wide.
+    let line = '';
+    let first = true; // only a paragraph's first line can start with a bold label
+    const flush = () => { add(line, 10, first ? 'label' : false, 5); first = false; };
+    for (const word of raw.split(' ')) {
+      if (line && (line + ' ' + word).length > 90) { flush(); line = `   ${word}`; } else line = line ? `${line} ${word}` : word;
+    }
+    flush();
+  }
+  add('', 10, false, 30);
+  add(`${doctor}`, 10, true, 2);
+  add('This is a computer-generated prescription.', 8, false, 2);
+
+  let y = 800;
+  let body = 'BT\n';
+  let ruleY = 0;
+  for (const [i, l] of lines.entries()) {
+    const label = l.bold === 'label' && /^(Diagnosis|Rx|Advice|Follow-up):/.exec(l.text);
+    const runs = label
+      ? `/F2 ${l.size} Tf (${ascii(label[0])}) Tj /F1 ${l.size} Tf (${ascii(l.text.slice(label[0].length))}) Tj`
+      : `/${l.bold === true ? 'F2' : 'F1'} ${l.size} Tf (${ascii(l.text)}) Tj`;
+    body += `1 0 0 1 50 ${y} Tm ${runs}\n`;
+    if (i === 1) ruleY = y - 8; // under the address line
+    y -= l.size + l.gap;
+  }
+  body += `ET\n0.6 w 50 ${ruleY} m 545 ${ruleY} l S\n`;
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
+    `<< /Length ${Buffer.byteLength(body, 'latin1')} >>\nstream\n${body}endstream`,
+  ];
+  let pdf = '%PDF-1.4\n';
+  const offsets = objects.map((o, i) => { const at = Buffer.byteLength(pdf, 'latin1'); pdf += `${i + 1} 0 obj\n${o}\nendobj\n`; return at; });
+  const xref = Buffer.byteLength(pdf, 'latin1');
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}`;
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(pdf, 'latin1');
+}
+
+async function seedPatientRecords() {
+  const conn = await db.getConnection();
+  try {
+    const [[done]] = await conn.query("SELECT COUNT(*) AS n FROM prescription_files WHERE name LIKE 'CareCure-Rx-%'");
+    if (done.n > 0) { console.log('Patient records are already loaded. Nothing to do.'); return; }
+
+    const [doctors] = await conn.query('SELECT d.id, d.user_id, d.specialization, d.fees, u.name FROM doctors d JOIN users u ON u.id = d.user_id');
+    const [realPatients] = await conn.query("SELECT id, name, age, gender FROM users WHERE role = 'patient' AND email NOT LIKE ?", [`%@${DEMO_DOMAIN}`]);
+
+    // Pick visit days and doctors first: their slots must exist before the transaction starts reading.
+    const plans = realPatients.map((p) => ({
+      p,
+      past: Array.from({ length: int(7, 10) }, () => ({ doc: pick(doctors), offset: -int(3, 150) })),
+      upcoming: Array.from({ length: 2 }, () => ({ doc: pick(doctors), offset: int(1, 10) })),
+    }));
+    for (const pl of plans) for (const v of [...pl.past, ...pl.upcoming]) await generateSlotsForDoctorDate(v.doc.id, dateStr(daysFrom(v.offset)));
+
+    await conn.beginTransaction();
+    let visits = 0;
+    for (const { p, past, upcoming } of plans) {
+      // Fill only what the account left empty.
+      await conn.query(
+        `UPDATE users SET age = COALESCE(age, ?), gender = COALESCE(gender, ?), city = COALESCE(NULLIF(city, ''), ?),
+           medical_history = COALESCE(NULLIF(medical_history, ''), ?) WHERE id = ?`,
+        [int(22, 45), chance(0.5) ? 'male' : 'female', 'Kolkata', pick(['Mild asthma since childhood', 'Allergic to sulfa drugs', 'Seasonal allergic rhinitis', 'Hypothyroidism, on Thyroxine 50 mcg']), p.id]
+      );
+      const [[{ up }]] = await conn.query(
+        `SELECT COUNT(*) AS up FROM appointments a JOIN doctor_slots s ON s.id = a.slot_id
+         WHERE a.patient_id = ? AND a.status = 'pending' AND TIMESTAMP(s.date, s.time) >= NOW()`, [p.id]
+      );
+      let upcomingLeft = Math.max(0, 5 - Number(up));
+      const used = new Set();
+      for (const v of [...past, ...upcoming]) {
+        const future = v.offset > 0;
+        const key = `${v.doc.id}:${v.offset}`;
+        if (used.has(key) || (future && upcomingLeft === 0)) continue;
+        const [[clash]] = await conn.query(
+          `SELECT a.id FROM appointments a JOIN doctor_slots s ON s.id = a.slot_id
+           WHERE a.patient_id = ? AND a.doctor_id = ? AND s.date = ? AND a.status <> 'cancelled'`, [p.id, v.doc.id, dateStr(daysFrom(v.offset))]
+        );
+        if (clash) continue;
+        const [free] = await conn.query('SELECT id, time FROM doctor_slots WHERE doctor_id = ? AND date = ? AND is_booked = 0 AND is_available = 1', [v.doc.id, dateStr(daysFrom(v.offset))]);
+        if (free.length === 0) continue;
+        used.add(key);
+        const slot = pick(free);
+        const start = at(daysFrom(v.offset), slot.time);
+        const status = future ? 'pending' : chance(0.1) ? 'cancelled' : 'completed';
+        const video = chance(0.2);
+        const paid = video || (status === 'completed' && chance(0.8)) || (future && chance(0.4));
+        const rx = pick(RX[v.doc.specialization] || RX['General Medicine']);
+        const booked = new Date(Math.min(start.getTime() - int(1, 6) * 86400000, Date.now() - 3600000));
+        const [a] = await conn.query(
+          `INSERT INTO appointments (patient_id, doctor_id, slot_id, active_slot_id, status, reason, consultation_type, video_room, payment_status, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [p.id, v.doc.id, slot.id, status === 'cancelled' ? null : slot.id, status, pick(REASONS[v.doc.specialization] || REASONS['General Medicine']),
+            video ? 'video' : 'in_person', video ? `hms-${hex(16)}` : null, paid ? 'paid' : 'unpaid', sql(booked)]
+        );
+        visits += 1;
+        if (future) upcomingLeft -= 1;
+        if (status !== 'cancelled') await conn.query('UPDATE doctor_slots SET is_booked = 1 WHERE id = ?', [slot.id]);
+        if (paid) {
+          await conn.query(
+            `INSERT INTO payments (appointment_id, patient_id, amount_paise, provider, provider_order_id, provider_payment_id, status, paid_at, created_at)
+             VALUES (?, ?, ?, 'mock', ?, ?, ?, ?, ?)`,
+            [a.insertId, p.id, Math.round(Number(v.doc.fees) * 100), `order_demo_${hex(10)}`, `pay_demo_${hex(10)}`,
+              status === 'cancelled' ? 'refund_due' : 'paid', sql(new Date(booked.getTime() + 600000)), sql(booked)]
+          );
+        }
+        if (status === 'completed') {
+          await conn.query('INSERT INTO prescriptions (appointment_id, doctor_id, patient_id, notes, created_at) VALUES (?, ?, ?, ?, ?)',
+            [a.insertId, v.doc.id, p.id, rxNotes(rx), sql(new Date(start.getTime() + 30 * 60000))]);
+          if (chance(0.6)) {
+            await conn.query('INSERT INTO ratings (appointment_id, doctor_id, patient_id, stars, created_at) VALUES (?, ?, ?, ?, ?)',
+              [a.insertId, v.doc.id, p.id, weighted([[5, 55], [4, 35], [3, 10]]), sql(new Date(start.getTime() + 86400000))]);
+          }
+        }
+      }
+    }
+    await conn.query(
+      `UPDATE doctors d JOIN (SELECT doctor_id, ROUND(AVG(stars), 2) AS r, COUNT(*) AS c FROM ratings GROUP BY doctor_id) x
+         ON x.doctor_id = d.id SET d.rating = x.r, d.rating_count = x.c`
+    );
+
+    // A prescription PDF for nearly every prescription without a file (some doctors only write notes).
+    const [rxRows] = await conn.query(
+      `SELECT p.id, p.notes, p.created_at, u.name AS patient, u.age, u.gender, du.name AS doctor, d.specialization,
+              u.email LIKE ? AS demo
+       FROM prescriptions p
+       JOIN users u ON u.id = p.patient_id
+       JOIN doctors d ON d.id = p.doctor_id
+       JOIN users du ON du.id = d.user_id
+       WHERE p.file_url IS NULL OR p.file_url LIKE '/uploads/%'`, [`%@${DEMO_DOMAIN}`]
+    );
+    let files = 0;
+    for (const r of rxRows) {
+      if (r.demo && chance(0.1)) continue;
+      const created = new Date(r.created_at);
+      const rxNo = `CC-${created.getFullYear()}-${String(r.id).padStart(5, '0')}`;
+      const pdf = prescriptionPdf({
+        doctor: r.doctor, specialization: r.specialization, patient: r.patient, age: r.age, gender: r.gender,
+        date: created.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }), notes: r.notes || '', rxNo,
+      });
+      await conn.query('INSERT INTO prescription_files (prescription_id, mime, name, size_bytes, data) VALUES (?, ?, ?, ?, ?)',
+        [r.id, 'application/pdf', `CareCure-Rx-${rxNo}.pdf`, pdf.length, pdf]);
+      await conn.query('UPDATE prescriptions SET file_url = ? WHERE id = ?', [`/api/files/prescriptions/${r.id}`, r.id]);
+      files += 1;
+    }
+
+    await conn.commit();
+    console.log(`✅ Patient records loaded: ${visits} visits for ${realPatients.length} existing patients, ${files} prescription PDFs.`);
+  } catch (err) {
+    try { await conn.rollback(); } catch { /* not in a transaction yet */ }
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 main()
+  .then(seedPatientRecords)
   .then(() => db.end())
   .then(() => process.exit(0))
   .catch((err) => { console.error('❌ Demo seed failed:', err.message); process.exit(1); });

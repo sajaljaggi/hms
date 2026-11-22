@@ -54,7 +54,7 @@ export default function MedicalHistory() {
               </span>
             </div>
             {r.notes && (
-              <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 border border-gray-100 mb-3">
+              <div className="p-3 bg-gray-50 rounded-lg text-sm text-gray-700 border border-gray-100 mb-3 whitespace-pre-line">
                 {r.notes}
               </div>
             )}

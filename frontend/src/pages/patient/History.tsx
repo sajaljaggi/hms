@@ -277,7 +277,7 @@ export default function History() {
               </div>
             </div>
             {appt.prescription_notes && (
-              <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-100 text-sm text-gray-700">
+              <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-100 text-sm text-gray-700 whitespace-pre-line">
                 <p className="font-medium text-gray-600 mb-1">Doctor's Notes:</p>
                 {appt.prescription_notes}
               </div>
