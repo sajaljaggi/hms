@@ -14,6 +14,6 @@ router.post('/orders', requireRole('patient'), validate(v.createOrderSchema), c.
 router.post('/verify', requireRole('patient'), validate(v.verifySchema), c.verifyPayment);
 router.post('/orders/:orderId/fail', requireRole('patient'), validate(v.orderIdParamsSchema, 'params'), c.failOrder);
 router.get('/my', requireRole('patient'), c.myPayments);
-router.get('/', requireRole('admin'), c.listPayments);
+router.get('/', requireRole('admin'), validate(v.listPaymentsQuerySchema, 'query'), c.listPayments);
 
 module.exports = router;

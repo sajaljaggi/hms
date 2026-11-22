@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { NotFoundError, ValidationError, ConflictError } = require('../utils/errors');
+const { MINUTES_AFTER_START } = require('../utils/dates');
 
 // ─── GET /api/patient/profile ───────────────────────────────────────────────
 const getProfile = async (req, res, next) => {
@@ -48,6 +49,8 @@ const getAppointments = async (req, res, next) => {
       `SELECT
          a.id, a.status, a.payment_status, a.consultation_type, a.created_at,
          ds.date, ds.time,
+         (a.status = 'pending' AND a.payment_status = 'unpaid'
+          AND TIMESTAMP(ds.date, ds.time) + INTERVAL ? MINUTE >= NOW()) AS can_pay,
          u.name  AS doctor_name,
          d.specialization, d.fees,
          p.notes AS prescription_notes,
@@ -61,7 +64,7 @@ const getAppointments = async (req, res, next) => {
        LEFT JOIN ratings       r ON r.appointment_id = a.id
        WHERE a.patient_id = ?
        ORDER BY ds.date DESC, ds.time DESC`,
-      [req.user.id]
+      [MINUTES_AFTER_START, req.user.id]
     );
     res.json({ success: true, data: rows });
   } catch (err) {

@@ -98,6 +98,42 @@ describe('payment routes (mock mode)', () => {
     expect(appts.body.data.find((a) => a.id === apptId).payment_status).toBe('paid');
   });
 
+  test('past appointment -> 400 unless within 60 min of its start, and can_pay says the same', async () => {
+    const bookAgo = async (minutes) => {
+      const [sl] = await db.query(
+        'INSERT INTO doctor_slots (doctor_id, date, time, is_booked) VALUES (?, DATE(NOW() - INTERVAL ? MINUTE), TIME(NOW() - INTERVAL ? MINUTE), 1)',
+        [doctor.doctorId, minutes, minutes]
+      );
+      const [a] = await db.query("INSERT INTO appointments (patient_id, doctor_id, slot_id, status) VALUES (?, ?, ?, 'pending')", [patient.userId, doctor.doctorId, sl.insertId]);
+      return a.insertId;
+    };
+    const old = await bookAgo(120);
+    const recent = await bookAgo(30);
+    const res = await post('/api/payments/orders', patient, { appointmentId: old });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('This appointment time has passed.');
+    expect((await post('/api/payments/orders', patient, { appointmentId: recent })).status).toBe(200);
+
+    const appts = (await authed(request(app).get, '/api/patient/appointments', patient)).body.data;
+    expect(Number(appts.find((a) => a.id === old).can_pay)).toBe(0);
+    expect(Number(appts.find((a) => a.id === recent).can_pay)).toBe(1);
+  });
+
+  test('admin list pages with page/limit and reports the total; bad paging -> 400', async () => {
+    const p1 = await authed(request(app).get, '/api/payments?page=1&limit=1', admin);
+    expect(p1.status).toBe(200);
+    expect(p1.body).toMatchObject({ page: 1, limit: 1 });
+    expect(p1.body.data).toHaveLength(1);
+    expect(p1.body.total).toBeGreaterThanOrEqual(2);
+    const p2 = await authed(request(app).get, '/api/payments?page=2&limit=1', admin);
+    expect(p2.body.data).toHaveLength(1);
+    expect(p2.body.data[0].id).not.toBe(p1.body.data[0].id);
+    expect((await authed(request(app).get, '/api/payments', admin)).body.limit).toBe(50);
+    for (const q of ['limit=0', 'limit=101', 'page=0', 'page=abc']) {
+      expect((await authed(request(app).get, `/api/payments?${q}`, admin)).status).toBe(400);
+    }
+  });
+
   test('cancelled or completed appointment -> 400, fail endpoint marks the order failed, the next order reuses it', async () => {
     const cancelled = await bookAppointment(patient.userId);
     await db.query("UPDATE appointments SET status = 'cancelled' WHERE id = ?", [cancelled]);
@@ -111,6 +147,9 @@ describe('payment routes (mock mode)', () => {
     const apptId = await bookAppointment(patient.userId);
     const first = (await post('/api/payments/orders', patient, { appointmentId: apptId })).body.data;
     expect((await post(`/api/payments/orders/${first.orderId}/fail`, other, {})).status).toBe(404);
+    // The 404 alone would not catch a missing ownership check on the UPDATE: the row must be untouched.
+    const [[untouched]] = await db.query('SELECT status FROM payments WHERE provider_order_id = ?', [first.orderId]);
+    expect(untouched.status).toBe('created');
     const fail = await post(`/api/payments/orders/${first.orderId}/fail`, patient, {});
     expect(fail.status).toBe(200);
     expect(fail.body.data.status).toBe('failed');

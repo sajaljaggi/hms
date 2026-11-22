@@ -16,6 +16,7 @@ export const paymentService = {
   getMyPayments: () =>
     api.get<{ success: true; data: MyPaymentRow[] }>('/payments/my'),
 
-  getAllPayments: () =>
-    api.get<{ success: true; data: AdminPaymentRow[]; summary: PaymentSummary }>('/payments'),
+  getAllPayments: (page = 1) =>
+    api.get<{ success: true; data: AdminPaymentRow[]; total: number; page: number; limit: number; summary: PaymentSummary }>(
+      '/payments', { params: { page } }),
 };

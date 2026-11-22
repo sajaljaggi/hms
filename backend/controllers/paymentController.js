@@ -4,6 +4,7 @@ const { AppError, NotFoundError, ConflictError, ValidationError } = require('../
 const { inTransaction } = require('../utils/transaction');
 const { notifyUsers } = require('../services/notificationService');
 const gateway = require('../services/paymentGateway');
+const { MINUTES_AFTER_START } = require('../utils/dates');
 
 // Every write to a payment row either holds the appointment row lock (createOrder, markPaid)
 // or is a single conditional UPDATE. Lock order is always appointment -> payment.
@@ -12,7 +13,7 @@ const gateway = require('../services/paymentGateway');
 
 async function loadAppointment(q, appointmentId, patientId, lock) {
   const [rows] = await q.query(
-    `SELECT status, payment_status, doctor_id FROM appointments WHERE id = ? AND patient_id = ?${lock ? ' FOR UPDATE' : ''}`,
+    `SELECT status, payment_status, doctor_id, slot_id FROM appointments WHERE id = ? AND patient_id = ?${lock ? ' FOR UPDATE' : ''}`,
     [appointmentId, patientId]
   );
   if (rows.length === 0) throw new NotFoundError('Appointment not found.');
@@ -20,6 +21,12 @@ async function loadAppointment(q, appointmentId, patientId, lock) {
   if (a.status === 'cancelled') throw new ValidationError('This appointment is cancelled.');
   if (a.payment_status === 'paid') throw new ConflictError('This appointment is already paid.');
   if (a.status !== 'pending') throw new ValidationError('Only upcoming appointments can be paid.');
+  // Separate unlocked read: a JOIN ... FOR UPDATE would also lock the slot row, outside the lock order.
+  const [[slot]] = await q.query(
+    'SELECT TIMESTAMP(date, time) + INTERVAL ? MINUTE < NOW() AS past FROM doctor_slots WHERE id = ?',
+    [MINUTES_AFTER_START, a.slot_id]
+  );
+  if (!slot || Number(slot.past)) throw new ValidationError('This appointment time has passed.');
   // The amount always comes from the doctor's fee in the DB, never from the client.
   const [[d]] = await q.query('SELECT ROUND(fees * 100) AS amount_paise FROM doctors WHERE id = ?', [a.doctor_id]);
   const amount = Number(d.amount_paise);
@@ -213,9 +220,10 @@ const myPayments = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// GET /api/payments (admin)
+// GET /api/payments?page=&limit= (admin)
 const listPayments = async (req, res, next) => {
   try {
+    const { page, limit } = req.query;
     const [rows] = await db.query(
       `SELECT p.id, p.appointment_id, p.amount_paise, p.currency, p.provider, p.provider_order_id, p.provider_payment_id,
               p.status, p.paid_at, p.created_at, pu.name AS patient_name, du.name AS doctor_name, ds.date, ds.time
@@ -226,15 +234,17 @@ const listPayments = async (req, res, next) => {
        JOIN doctors d       ON d.id = a.doctor_id
        JOIN users du        ON du.id = d.user_id
        ORDER BY p.created_at DESC, p.id DESC
-       LIMIT 200`
+       LIMIT ? OFFSET ?`,
+      [limit, (page - 1) * limit]
     );
     const [[s]] = await db.query(
       `SELECT COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_paise END), 0) AS total_paid,
               COALESCE(SUM(status = 'paid'), 0) AS paid_count,
-              COALESCE(SUM(status = 'created'), 0) AS pending_count
+              COALESCE(SUM(status = 'created'), 0) AS pending_count,
+              COUNT(*) AS total
        FROM payments`
     );
-    res.json({ success: true, data: rows, summary: { totalPaidPaise: +s.total_paid, paidCount: +s.paid_count, pendingCount: +s.pending_count } });
+    res.json({ success: true, data: rows, total: +s.total, page, limit, summary: { totalPaidPaise: +s.total_paid, paidCount: +s.paid_count, pendingCount: +s.pending_count } });
   } catch (err) { next(err); }
 };
 

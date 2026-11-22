@@ -57,3 +57,14 @@ JOIN (SELECT COUNT(*) c FROM beds) x ON x.c = 0
 WHERE (w.name = 'General Ward A' AND n.n <= 10)
    OR (w.name = 'ICU' AND n.n <= 6)
    OR (w.name = 'Emergency Bay' AND n.n <= 6);
+
+-- Database guard for one open allocation per patient and per bed. The app sets open_patient_id and
+-- open_bed_id on admission and clears both on discharge. Unique keys ignore NULLs, so closed rows never
+-- clash. Plain columns rather than generated ones: MySQL 8 forbids stored generated columns over
+-- patient_id because its foreign key cascades.
+ALTER TABLE bed_allocations ADD COLUMN open_patient_id INT NULL;
+ALTER TABLE bed_allocations ADD COLUMN open_bed_id INT NULL;
+UPDATE bed_allocations SET open_patient_id = patient_id, open_bed_id = bed_id
+WHERE discharged_at IS NULL AND open_patient_id IS NULL;
+ALTER TABLE bed_allocations ADD UNIQUE INDEX uq_alloc_open_patient (open_patient_id);
+ALTER TABLE bed_allocations ADD UNIQUE INDEX uq_alloc_open_bed (open_bed_id);
