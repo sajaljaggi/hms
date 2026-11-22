@@ -1,4 +1,5 @@
 const { NotFoundError, ConflictError } = require('../utils/errors');
+const { allocateBed } = require('./bedService');
 
 // Runs on the caller's connection (a transaction, or the pool for single statements).
 // One pending admission request per patient and one pending discharge request per admission:
@@ -55,4 +56,34 @@ async function closeRequest(conn, requestId, { status, notes = null, user }) {
   return r;
 }
 
-module.exports = { requestAdmission, requestDischarge, closeRequest };
+// Assigns a bed for a pending admission request the caller has locked. Used by the Requests tab and by
+// the bed grid's Allocate, so an emergency request also marks its case admitted either way.
+// Lock order: request -> emergency case -> (bedService) bed -> patient -> allocation.
+async function assignBedForRequest(conn, r, { bedId, adminId, reason }) {
+  if (r.emergency_case_id) {
+    const [[c]] = await conn.query('SELECT status FROM emergency_cases WHERE id = ? FOR UPDATE', [r.emergency_case_id]);
+    if (c && !['waiting', 'in_treatment'].includes(c.status)) {
+      throw new ConflictError(`The emergency case is already ${c.status}. Reject this request instead.`);
+    }
+  }
+  // allocateBed also marks the request fulfilled and makes its doctor the attending doctor.
+  const { allocationId } = await allocateBed(conn, { bedId, patientId: r.patient_id, reason, allocatedBy: adminId });
+  if (r.emergency_case_id) {
+    await conn.query(
+      "UPDATE emergency_cases SET status = 'admitted', bed_allocation_id = ?, closed_at = NOW() WHERE id = ?",
+      [allocationId, r.emergency_case_id]
+    );
+  }
+  return allocationId;
+}
+
+// The patient's pending admission request, locked, or null. Plain read first: a FOR UPDATE on a missing
+// unique key takes a gap lock that deadlocks with a doctor's concurrent INSERT.
+async function lockPendingAdmission(conn, patientId) {
+  const [[found]] = await conn.query('SELECT id FROM bed_requests WHERE open_key = ?', [`admission:${patientId}`]);
+  if (!found) return null;
+  const [[r]] = await conn.query('SELECT * FROM bed_requests WHERE id = ? FOR UPDATE', [found.id]);
+  return r && r.status === 'pending' ? r : null;
+}
+
+module.exports = { requestAdmission, requestDischarge, closeRequest, assignBedForRequest, lockPendingAdmission };

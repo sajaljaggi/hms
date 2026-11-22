@@ -2,6 +2,7 @@ const db = require('../config/db');
 const { escapeLike } = require('../utils/sql');
 const { NotFoundError, ConflictError } = require('../utils/errors');
 const { allocateBed, dischargeAllocation } = require('../services/bedService');
+const { assignBedForRequest, lockPendingAdmission } = require('../services/bedRequestService');
 const { notifyUsers } = require('../services/notificationService');
 const { inTransaction } = require('../utils/transaction');
 
@@ -84,9 +85,13 @@ const updateBedStatus = async (req, res, next) => {
 const allocate = async (req, res, next) => {
   try {
     const { patientId, reason } = req.body;
-    const { allocationId, request } = await inTransaction((conn) =>
-      allocateBed(conn, { bedId: req.params.id, patientId, reason, allocatedBy: req.user.id })
-    );
+    // A patient with a pending bed request gets it answered (and an emergency case admitted), same as the Requests tab.
+    const { allocationId, request } = await inTransaction(async (conn) => {
+      const pending = await lockPendingAdmission(conn, patientId);
+      if (!pending) return allocateBed(conn, { bedId: req.params.id, patientId, reason, allocatedBy: req.user.id });
+      const id = await assignBedForRequest(conn, pending, { bedId: req.params.id, adminId: req.user.id, reason });
+      return { allocationId: id, request: pending };
+    });
     await notifyUsers([patientId], {
       type: 'bed', title: 'Admitted', message: 'A bed has been allocated to you.',
     });

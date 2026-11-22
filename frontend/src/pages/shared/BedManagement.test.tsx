@@ -163,4 +163,27 @@ describe('BedManagement', () => {
     expect(svc.rejectRequest).toHaveBeenCalledWith(21, 'No bed free');
     prompt.mockRestore();
   });
+
+  it("Allocate lists doctors' bed requests (matching ward type first) and allocates the chosen patient", async () => {
+    asRole('admin');
+    svc.getWards.mockResolvedValue({ data: { success: true, data: [{ id: 1, name: 'ICU', ward_type: 'icu' }] } } as never);
+    svc.getRequests.mockResolvedValue({ data: { success: true, data: [
+      req(30, { patient_id: 31, patient_name: 'Gen Gina', urgency: 'emergency', ward_type: 'general' }),
+      req(32, { patient_id: 33, patient_name: 'Icu Ivan', urgency: 'urgent', ward_type: 'icu', reason: 'Post-op' }),
+      req(34, { patient_id: 35, patient_name: 'Done Dan', status: 'fulfilled' }),
+      req(36, { patient_id: 37, patient_name: 'Out Otto', request_type: 'discharge' }),
+    ] } } as never);
+    render(<BedManagement />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Allocate' }));
+    const dialog = screen.getByRole('dialog', { name: 'Allocate bed' });
+    const options = await within(dialog).findAllByRole('button', { pressed: false });
+    expect(options.map((o) => o.textContent)).toEqual([
+      expect.stringMatching(/^Icu Ivan.*urgent.*icu bed.*By Dr Who · Post-op/),
+      expect.stringMatching(/^Gen Gina.*emergency.*general bed/),
+    ]); // only pending bed requests, this ward's type first
+    await userEvent.click(options[0]);
+    expect(within(dialog).getByRole('button', { name: /Icu Ivan/ })).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm allocation' }));
+    expect(svc.allocate).toHaveBeenCalledWith(1, { patientId: 33, reason: undefined });
+  });
 });

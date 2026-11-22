@@ -25,7 +25,7 @@ describe('bed requests: doctors ask, the admin assigns and discharges', () => {
   });
   afterAll(async () => {
     await db.query('DELETE FROM bed_requests WHERE requested_by IN (?)', [[doctor.userId, otherDoctor.userId]]);
-    await db.query('DELETE FROM bed_allocations WHERE bed_id IN (?)', [[bedA, bedB, bedC]]);
+    await db.query('DELETE FROM bed_allocations WHERE bed_id IN (SELECT id FROM beds WHERE ward_id = ?)', [wardId]);
     await db.query('DELETE FROM wards WHERE id = ?', [wardId]);
     await cleanupUsers(ids);
   });
@@ -128,6 +128,22 @@ describe('bed requests: doctors ask, the admin assigns and discharges', () => {
     expect((await patch({ status: 'transferred' })).status).toBe(200);
     const [[closed]] = await db.query('SELECT status FROM bed_requests WHERE emergency_case_id = ?', [case2]);
     expect(closed.status).toBe('cancelled');
+  });
+
+  test("allocating from the bed grid answers the patient's emergency request and admits the case", async () => {
+    const p = await fresh();
+    const caseId = (await authed(request(app).post, '/api/emergency/cases', doctor)
+      .send({ patientId: p.userId, chiefComplaint: 'Stroke signs', triageLevel: 2 })).body.data.id;
+    expect((await authed(request(app).post, `/api/emergency/cases/${caseId}/request-bed`, doctor).send({})).status).toBe(201);
+    const bedD = (await authed(request(app).post, '/api/beds', admin).send({ wardId, bedNumber: 'R-4' })).body.data.id;
+
+    const res = await authed(request(app).post, `/api/beds/${bedD}/allocate`, admin).send({ patientId: p.userId });
+    expect(res.status).toBe(201);
+    const [[r]] = await db.query('SELECT status, allocation_id FROM bed_requests WHERE emergency_case_id = ?', [caseId]);
+    expect(r).toEqual({ status: 'fulfilled', allocation_id: res.body.data.allocationId });
+    const [[ec]] = await db.query('SELECT status, bed_allocation_id FROM emergency_cases WHERE id = ?', [caseId]);
+    expect(ec).toEqual({ status: 'admitted', bed_allocation_id: res.body.data.allocationId });
+    expect(await notes(doctor.userId, 'Bed assigned')).toContain('Your patient was assigned a bed.');
   });
 });
 

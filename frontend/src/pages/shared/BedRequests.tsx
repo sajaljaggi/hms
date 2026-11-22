@@ -2,15 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { bedService } from '../../services/bedService';
 import PatientPicker from '../../components/PatientPicker';
 import { getErrorMessage } from '../../utils/getErrorMessage';
+import { URGENCY_STYLE } from '../../utils/urgencyBadge';
 import type { Bed, BedRequest, BedUrgency, MyPatientBed, PatientSearchResult, Ward, WardType } from '../../types/modules';
 
 // Doctors ask for a bed or a discharge; the admin assigns the bed or discharges (like blood requests).
 
 const WARD_TYPES: WardType[] = ['general', 'icu', 'emergency', 'maternity', 'pediatric', 'private'];
 const URGENCIES: BedUrgency[] = ['routine', 'urgent', 'emergency'];
-const URGENCY_STYLE: Record<BedUrgency, string> = {
-  routine: 'bg-gray-100 text-gray-700', urgent: 'bg-amber-100 text-amber-800', emergency: 'bg-red-100 text-red-800',
-};
 const input = 'border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500';
 const btn = 'px-3 py-1.5 rounded-md text-sm font-medium disabled:opacity-50';
 const Alert = ({ msg }: { msg: string }) => (msg ? <div role="alert" className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-md px-4 py-2">{msg}</div> : null);

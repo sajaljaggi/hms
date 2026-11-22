@@ -1,8 +1,8 @@
 const db = require('../config/db');
 const { NotFoundError, ConflictError, ValidationError } = require('../utils/errors');
 const { inTransaction } = require('../utils/transaction');
-const { allocateBed, dischargeAllocation } = require('../services/bedService');
-const { requestAdmission, requestDischarge, closeRequest } = require('../services/bedRequestService');
+const { dischargeAllocation } = require('../services/bedService');
+const { requestAdmission, requestDischarge, closeRequest, assignBedForRequest } = require('../services/bedRequestService');
 const { notifyUsers, notifyRoles } = require('../services/notificationService');
 
 // Doctors ask; only the admin assigns beds and discharges (like blood requests).
@@ -53,7 +53,6 @@ const listRequests = async (req, res, next) => {
 };
 
 // POST /api/beds/requests/:id/fulfill (admin). Admission: { bedId } assigns that bed; discharge frees the bed.
-// Lock order: request -> emergency case -> (bedService) bed -> patient -> allocation.
 const fulfill = async (req, res, next) => {
   try {
     const result = await inTransaction(async (conn) => {
@@ -66,20 +65,7 @@ const fulfill = async (req, res, next) => {
         return { r };
       }
       if (!req.body.bedId) throw new ValidationError('Choose a bed for this admission.');
-      if (r.emergency_case_id) {
-        const [[c]] = await conn.query('SELECT status FROM emergency_cases WHERE id = ? FOR UPDATE', [r.emergency_case_id]);
-        if (c && !['waiting', 'in_treatment'].includes(c.status)) {
-          throw new ConflictError(`The emergency case is already ${c.status}. Reject this request instead.`);
-        }
-      }
-      // allocateBed also marks this request fulfilled and makes its doctor the attending doctor.
-      const { allocationId } = await allocateBed(conn, { bedId: req.body.bedId, patientId: r.patient_id, allocatedBy: req.user.id });
-      if (r.emergency_case_id) {
-        await conn.query(
-          "UPDATE emergency_cases SET status = 'admitted', bed_allocation_id = ?, closed_at = NOW() WHERE id = ?",
-          [allocationId, r.emergency_case_id]
-        );
-      }
+      const allocationId = await assignBedForRequest(conn, r, { bedId: req.body.bedId, adminId: req.user.id });
       const [[bed]] = await conn.query(
         'SELECT b.bed_number, w.name AS ward_name FROM beds b JOIN wards w ON w.id = b.ward_id WHERE b.id = ?', [req.body.bedId]
       );

@@ -4,8 +4,9 @@ import { bedService } from '../../services/bedService';
 import { useAuth } from '../../context/useAuth';
 import PatientPicker from '../../components/PatientPicker';
 import { BedRequestsTab, MyPatientsTab } from './BedRequests';
+import { URGENCY_STYLE } from '../../utils/urgencyBadge';
 import { getErrorMessage } from '../../utils/getErrorMessage';
-import type { Bed, BedStats, BedStatus, PatientSearchResult, Ward, WardType } from '../../types/modules';
+import type { Bed, BedRequest, BedStats, BedStatus, PatientSearchResult, Ward, WardType } from '../../types/modules';
 
 const STATUS_STYLE: Record<BedStatus, string> = {
   available: 'bg-green-50 border-green-300 text-green-800',
@@ -38,6 +39,8 @@ export default function BedManagement() {
   const [allocBed, setAllocBed] = useState<Bed | null>(null);
   const [patient, setPatient] = useState<PatientSearchResult | null>(null);
   const [reason, setReason] = useState('');
+  // Patients doctors asked a bed for, offered first when allocating.
+  const [requested, setRequested] = useState<BedRequest[] | null>(null);
   const [wardForm, setWardForm] = useState<{ name: string; wardType: WardType; floor: string } | null>(null);
   const [bedForm, setBedForm] = useState<{ wardId: string; bedNumber: string; dailyRate: string } | null>(null);
 
@@ -83,7 +86,22 @@ export default function BedManagement() {
     }
   };
 
-  const closeAlloc = () => { setDialogError(''); setAllocBed(null); setPatient(null); setReason(''); };
+  const closeAlloc = () => { setDialogError(''); setAllocBed(null); setPatient(null); setReason(''); setRequested(null); };
+
+  const openAlloc = async (bed: Bed) => {
+    setAllocBed(bed);
+    try {
+      const res = await bedService.getRequests();
+      // Pending bed requests; those asking for this bed's ward type first (the server already sorts by urgency, oldest).
+      const wardType = wards.find((w) => w.id === bed.ward_id)?.ward_type;
+      const pending = res.data.data.filter((r) => r.status === 'pending' && r.request_type === 'admission');
+      setRequested([...pending].sort((a, b) => Number(b.ward_type === wardType) - Number(a.ward_type === wardType)));
+    } catch (err) {
+      setRequested([]);
+      setDialogError(getErrorMessage(err, 'Could not load bed requests'));
+    }
+  };
+  const allocWardType = allocBed ? wards.find((w) => w.id === allocBed.ward_id)?.ward_type : undefined;
 
   const submitAllocate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,7 +204,7 @@ export default function BedManagement() {
             {bed.status === 'occupied' && <p className="text-sm">{bed.patient_name}</p>}
             <div className="flex flex-wrap gap-2 items-center">
               {bed.status === 'available' && (
-                <button type="button" className={`${btn} bg-teal-600 text-white`} onClick={() => setAllocBed(bed)}>Allocate</button>
+                <button type="button" className={`${btn} bg-teal-600 text-white`} onClick={() => openAlloc(bed)}>Allocate</button>
               )}
               {bed.status === 'occupied' && (
                 <button type="button" className={`${btn} bg-red-600 text-white`} disabled={pending === `discharge-${bed.id}`} onClick={() => discharge(bed)}>
@@ -211,6 +229,35 @@ export default function BedManagement() {
         <div role="dialog" aria-label="Allocate bed" className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
           <form onSubmit={submitAllocate} className="bg-white rounded-lg p-6 w-full max-w-md space-y-4">
             <h2 className="text-lg font-semibold">Allocate {allocBed.ward_name} / {allocBed.bed_number}</h2>
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium text-gray-700">Requested by doctors</legend>
+              {requested === null && <p className="text-sm text-gray-500">Loading requests...</p>}
+              {requested?.length === 0 && <p className="text-sm text-gray-500">No pending bed requests.</p>}
+              <ul className="space-y-2 max-h-56 overflow-y-auto">
+                {requested?.map((r) => {
+                  const chosen = patient?.id === r.patient_id;
+                  return (
+                    <li key={r.id}>
+                      <button type="button" aria-pressed={chosen}
+                        onClick={() => setPatient({ id: r.patient_id, name: r.patient_name, email: '', phone: null })}
+                        className={`w-full text-left border rounded-md px-3 py-2 text-sm ${chosen ? 'border-teal-600 bg-teal-50 ring-1 ring-teal-600' : 'border-gray-200 hover:bg-gray-50'}`}>
+                        <span className="flex flex-wrap items-center gap-2">
+                          <strong>{r.patient_name}</strong>
+                          <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${URGENCY_STYLE[r.urgency]}`}>{r.urgency}</span>
+                          <span className={`text-xs ${r.ward_type && r.ward_type === allocWardType ? 'text-teal-700 font-medium' : 'text-gray-500'}`}>
+                            {r.ward_type ? `${r.ward_type} bed` : 'any bed'}
+                          </span>
+                        </span>
+                        <span className="block text-xs text-gray-500 mt-0.5">
+                          {r.requester_name ? `By ${r.requester_name}` : 'Doctor no longer listed'}{r.reason && ` · ${r.reason}`}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </fieldset>
+            <p className="text-sm text-gray-500">Or another patient:</p>
             <PatientPicker value={patient} onChange={setPatient} />
             {dialogError && <p role="alert" className="text-sm text-red-700">{dialogError}</p>}
             <label className="block text-sm font-medium text-gray-700">Reason
