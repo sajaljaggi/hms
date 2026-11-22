@@ -41,7 +41,13 @@ const pool = mysql.createPool({
 // so the session zone must match or NOW()/CURRENT_TIMESTAMP values come back 5.5 h off on a UTC server.
 // The offset form needs no MySQL tz tables. Queued before any other query on the connection.
 const DB_SESSION_TIME_ZONE = '+05:30';
-pool.on('connection', (conn) => conn.query(`SET time_zone = '${DB_SESSION_TIME_ZONE}'`));
+// On failure, drop the connection rather than crash the process or serve queries with a wrong zone.
+pool.on('connection', (conn) => conn.query(`SET time_zone = '${DB_SESSION_TIME_ZONE}'`, (err) => {
+  if (err) {
+    console.error('❌ Failed to set DB session time zone:', err.message);
+    conn.destroy();
+  }
+}));
 
 // Promisify the pool for async/await usage
 const db = pool.promise();
