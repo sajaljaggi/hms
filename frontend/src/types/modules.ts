@@ -44,6 +44,12 @@ export interface Bed {
   patient_id: number | null;
   patient_name: string | null;
   admitted_at: string | null;
+  // A doctor's pending discharge request for the patient in this bed.
+  discharge_request_id: number | null;
+  discharge_requested_by: string | null;
+  discharge_requested_at: string | null;
+  discharge_urgency: BedUrgency | null;
+  discharge_reason: string | null;
 }
 export interface BedStats {
   total: number;

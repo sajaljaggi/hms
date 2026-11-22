@@ -14,6 +14,8 @@ const STATUS_STYLE: Record<BedStatus, string> = {
   maintenance: 'bg-gray-100 border-gray-300 text-gray-700',
   reserved: 'bg-amber-50 border-amber-300 text-amber-800',
 };
+// An occupied bed whose patient a doctor asked to discharge stands out from every bed status.
+const DISCHARGE_REQUESTED_STYLE = 'bg-violet-50 border-violet-400 text-violet-900';
 const WARD_TYPES: WardType[] = ['general', 'icu', 'emergency', 'maternity', 'pediatric', 'private'];
 const SETTABLE: Exclude<BedStatus, 'occupied'>[] = ['available', 'maintenance', 'reserved'];
 
@@ -196,19 +198,30 @@ export default function BedManagement() {
       {beds.length === 0 && <p className="text-gray-500 text-sm">No beds match.</p>}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {beds.map((bed) => (
-          <div key={bed.id} data-testid={`bed-${bed.id}`} className={`border rounded-lg p-3 space-y-2 ${STATUS_STYLE[bed.status]}`}>
+          <div key={bed.id} data-testid={`bed-${bed.id}`}
+            className={`border rounded-lg p-3 space-y-2 ${bed.discharge_request_id ? DISCHARGE_REQUESTED_STYLE : STATUS_STYLE[bed.status]}`}>
             <div className="flex justify-between text-sm font-semibold">
               <span>{bed.ward_name} / {bed.bed_number}</span>
-              <span className="capitalize">{bed.status}</span>
+              <span className="capitalize">{bed.discharge_request_id ? 'Discharge requested' : bed.status}</span>
             </div>
             {bed.status === 'occupied' && <p className="text-sm">{bed.patient_name}</p>}
+            {bed.discharge_request_id && (
+              <div className="text-xs space-y-0.5">
+                <p className="flex flex-wrap items-center gap-1.5">
+                  <span>By {bed.discharge_requested_by ?? 'a doctor'}</span>
+                  {bed.discharge_urgency && <span className={`px-2 py-0.5 rounded-full capitalize ${URGENCY_STYLE[bed.discharge_urgency]}`}>{bed.discharge_urgency}</span>}
+                </p>
+                {bed.discharge_requested_at && <p>{new Date(bed.discharge_requested_at).toLocaleString()}</p>}
+                {bed.discharge_reason && <p className="italic">“{bed.discharge_reason}”</p>}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2 items-center">
               {bed.status === 'available' && (
                 <button type="button" className={`${btn} bg-teal-600 text-white`} onClick={() => openAlloc(bed)}>Allocate</button>
               )}
               {bed.status === 'occupied' && (
                 <button type="button" className={`${btn} bg-red-600 text-white`} disabled={pending === `discharge-${bed.id}`} onClick={() => discharge(bed)}>
-                  {pending === `discharge-${bed.id}` ? 'Discharging...' : 'Discharge'}
+                  {pending === `discharge-${bed.id}` ? 'Discharging...' : bed.discharge_request_id ? 'Approve discharge' : 'Discharge'}
                 </button>
               )}
               {isAdmin && bed.status !== 'occupied' && (

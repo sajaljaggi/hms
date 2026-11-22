@@ -18,7 +18,8 @@ vi.mock('../../context/useAuth', () => ({ useAuth: vi.fn() }));
 const svc = vi.mocked(bedService);
 const bed = (id: number, over: Partial<Bed> = {}): Bed => ({
   id, ward_id: 1, bed_number: `B${id}`, status: 'available', daily_rate: '100', ward_name: 'ICU',
-  allocation_id: null, patient_id: null, patient_name: null, admitted_at: null, ...over,
+  allocation_id: null, patient_id: null, patient_name: null, admitted_at: null, discharge_request_id: null,
+  discharge_requested_by: null, discharge_requested_at: null, discharge_urgency: null, discharge_reason: null, ...over,
 });
 const asRole = (role: 'admin' | 'doctor') =>
   vi.mocked(useAuth).mockReturnValue({ user: { id: 1, name: 'U', email: 'u@x', role }, role } as never);
@@ -185,5 +186,27 @@ describe('BedManagement', () => {
     expect(within(dialog).getByRole('button', { name: /Icu Ivan/ })).toHaveAttribute('aria-pressed', 'true');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm allocation' }));
     expect(svc.allocate).toHaveBeenCalledWith(1, { patientId: 33, reason: undefined });
+  });
+
+  it('marks a bed whose discharge a doctor requested, with who asked, urgency and reason', async () => {
+    asRole('admin');
+    svc.getBeds.mockResolvedValue({ data: { success: true, data: [
+      bed(2, { status: 'occupied', allocation_id: 9, patient_id: 4, patient_name: 'Prince Jain', discharge_request_id: 12,
+        discharge_requested_by: 'Dr Who', discharge_requested_at: '2030-01-01T10:00:00Z', discharge_urgency: 'urgent', discharge_reason: 'Recovered' }),
+      bed(3, { status: 'occupied', allocation_id: 10, patient_id: 5, patient_name: 'Still Sick' }),
+    ] } } as never);
+    render(<BedManagement />);
+    const requested = await screen.findByTestId('bed-2');
+    expect(requested).toHaveClass('bg-violet-50');
+    expect(requested).toHaveTextContent('Discharge requested');
+    expect(requested).toHaveTextContent('By Dr Who');
+    expect(within(requested).getByText('urgent')).toBeInTheDocument();
+    expect(requested).toHaveTextContent('Recovered');
+    expect(within(requested).getByRole('button', { name: 'Approve discharge' })).toBeInTheDocument();
+
+    const other = screen.getByTestId('bed-3');
+    expect(other).toHaveClass('bg-red-50');
+    expect(other).not.toHaveTextContent('Discharge requested');
+    expect(within(other).getByRole('button', { name: 'Discharge' })).toBeInTheDocument();
   });
 });

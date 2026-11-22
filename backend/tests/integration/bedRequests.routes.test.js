@@ -63,6 +63,13 @@ describe('bed requests: doctors ask, the admin assigns and discharges', () => {
     expect(d.status).toBe(201);
     expect((await ask(doctor, { type: 'discharge', allocationId: a.id })).status).toBe(409);
     expect((await myPatients(doctor))[0].discharge_request_id).toBe(d.body.data.id);
+    // The admin's bed grid marks the bed with the request details.
+    const grid = (await authed(request(app).get, `/api/beds?wardId=${wardId}`, admin)).body.data;
+    const [[docUser]] = await db.query('SELECT name FROM users WHERE id = ?', [doctor.userId]);
+    expect(grid.find((b) => b.id === bedA)).toMatchObject({
+      discharge_request_id: d.body.data.id, discharge_requested_by: docUser.name, discharge_urgency: 'routine', discharge_reason: 'Recovered',
+    });
+    expect(grid.find((b) => b.id === bedB).discharge_request_id).toBeNull();
 
     expect((await fulfill(d.body.data.id)).status).toBe(200);
     const [[bed]] = await db.query('SELECT status FROM beds WHERE id = ?', [bedA]);

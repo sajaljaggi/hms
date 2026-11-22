@@ -45,11 +45,15 @@ const listBeds = async (req, res, next) => {
     if (status) { where.push('b.status = ?'); params.push(status); }
     const [rows] = await db.query(
       `SELECT b.id, b.ward_id, b.bed_number, b.status, b.daily_rate, w.name AS ward_name,
-              a.id AS allocation_id, a.patient_id, u.name AS patient_name, a.admitted_at
+              a.id AS allocation_id, a.patient_id, u.name AS patient_name, a.admitted_at,
+              dr.id AS discharge_request_id, dru.name AS discharge_requested_by, dr.created_at AS discharge_requested_at,
+              dr.urgency AS discharge_urgency, dr.reason AS discharge_reason
        FROM beds b
        JOIN wards w ON w.id = b.ward_id
        LEFT JOIN bed_allocations a ON a.bed_id = b.id AND a.discharged_at IS NULL
        LEFT JOIN users u ON u.id = a.patient_id
+       LEFT JOIN bed_requests dr ON dr.open_key = CONCAT('discharge:', a.id)
+       LEFT JOIN users dru ON dru.id = dr.requested_by
        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
        ORDER BY w.name, b.bed_number`,
       params
