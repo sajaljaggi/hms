@@ -82,6 +82,19 @@ describe('beds routes', () => {
     expect([x.status, y.status].sort()).toEqual([201, 409]);
   });
 
+  test('DB unique keys reject a second open allocation even when the app check is bypassed', async () => {
+    const [[open]] = await db.query('SELECT bed_id, open_patient_id, open_bed_id FROM bed_allocations WHERE patient_id = ? AND discharged_at IS NULL', [p3.userId]);
+    expect(open).toMatchObject({ open_patient_id: p3.userId, open_bed_id: open.bed_id });
+    const other = open.bed_id === bedC ? bedD : bedC;
+    const raw = (bed, patient) => db.query(
+      'INSERT INTO bed_allocations (bed_id, patient_id, open_patient_id, open_bed_id) VALUES (?, ?, ?, ?)', [bed, patient, patient, bed]
+    );
+    await expect(raw(other, p3.userId)).rejects.toMatchObject({ code: 'ER_DUP_ENTRY' }); // same patient, free bed
+    await expect(raw(open.bed_id, p2.userId)).rejects.toMatchObject({ code: 'ER_DUP_ENTRY' }); // same bed, new patient
+    const [[closed]] = await db.query('SELECT COUNT(*) AS c FROM bed_allocations WHERE discharged_at IS NOT NULL AND (open_patient_id IS NOT NULL OR open_bed_id IS NOT NULL)');
+    expect(closed.c).toBe(0); // discharge clears the keys
+  });
+
   test('status change on free bed works; unknown bed -> 404', async () => {
     expect((await authed(request(app).patch, `/api/beds/${bedB}/status`, admin).send({ status: 'maintenance' })).status).toBe(200);
     expect((await allocate(bedB, p2)).status).toBe(409);

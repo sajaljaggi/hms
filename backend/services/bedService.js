@@ -21,10 +21,17 @@ async function allocateBed(conn, { bedId, patientId, reason, allocatedBy }) {
   );
   if (open.length > 0) throw new ConflictError('Patient already admitted.');
 
-  const [ins] = await conn.query(
-    'INSERT INTO bed_allocations (bed_id, patient_id, allocated_by, reason) VALUES (?, ?, ?, ?)',
-    [bedId, patientId, allocatedBy ?? null, reason ?? null]
-  );
+  // open_* back the unique keys that make a second open allocation impossible at the DB level.
+  let ins;
+  try {
+    [ins] = await conn.query(
+      'INSERT INTO bed_allocations (bed_id, patient_id, allocated_by, reason, open_patient_id, open_bed_id) VALUES (?, ?, ?, ?, ?, ?)',
+      [bedId, patientId, allocatedBy ?? null, reason ?? null, patientId, bedId]
+    );
+  } catch (err) {
+    if (err.code !== 'ER_DUP_ENTRY') throw err;
+    throw new ConflictError(/uq_alloc_open_bed/.test(err.message) ? 'Bed is not available.' : 'Patient already admitted.');
+  }
   // Guarded: flips only from 'available' (never silently overwrites another state).
   const [upd] = await conn.query("UPDATE beds SET status = 'occupied' WHERE id = ? AND status = 'available'", [bedId]);
   if (upd.affectedRows !== 1) throw new ConflictError('Bed is not available.');
@@ -49,7 +56,7 @@ async function dischargeAllocation(conn, allocationId) {
   // Refuse rather than overwrite a bed that is not 'occupied' (inconsistent state needs a human).
   if (beds[0].status !== 'occupied') throw new ConflictError('Bed is not in occupied state.');
 
-  await conn.query('UPDATE bed_allocations SET discharged_at = NOW() WHERE id = ?', [allocationId]);
+  await conn.query('UPDATE bed_allocations SET discharged_at = NOW(), open_patient_id = NULL, open_bed_id = NULL WHERE id = ?', [allocationId]);
   await conn.query("UPDATE beds SET status = 'available' WHERE id = ?", [bedId]);
   return { bedId, patientId: rows[0].patient_id };
 }
