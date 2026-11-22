@@ -111,6 +111,9 @@ describe('payment routes (mock mode)', () => {
     const apptId = await bookAppointment(patient.userId);
     const first = (await post('/api/payments/orders', patient, { appointmentId: apptId })).body.data;
     expect((await post(`/api/payments/orders/${first.orderId}/fail`, other, {})).status).toBe(404);
+    // The 404 alone would not catch a missing ownership check on the UPDATE: the row must be untouched.
+    const [[untouched]] = await db.query('SELECT status FROM payments WHERE provider_order_id = ?', [first.orderId]);
+    expect(untouched.status).toBe('created');
     const fail = await post(`/api/payments/orders/${first.orderId}/fail`, patient, {});
     expect(fail.status).toBe(200);
     expect(fail.body.data.status).toBe('failed');
