@@ -16,6 +16,7 @@ import { format, addDays, parse, addMinutes } from 'date-fns';
 import { chatbotService, type ChatDoctor, type ChatSlot, type ChatAppointment } from '../services/chatbotService';
 import { useAuth } from '../context/useAuth';
 import { getErrorMessage } from '../utils/getErrorMessage';
+import { renderMarkdown } from '../utils/renderMarkdown';
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 interface Message {
@@ -319,15 +320,6 @@ export default function Chatbot() {
   const cancelBooking = () => {
     resetBooking();
     addBotMessage("Booking cancelled. No worries! Is there anything else I can help with? 😊");
-  };
-
-  /* ── Render Helpers ──────────────────────────────────────────────────── */
-  const renderMarkdown = (text: string) => {
-    // Simple markdown: **bold**, [link](url), newlines
-    return text
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" class="text-teal-400 underline hover:text-teal-300 transition-colors">$1</a>')
-      .replace(/\n/g, '<br/>');
   };
 
   return (
