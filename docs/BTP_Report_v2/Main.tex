@@ -1,0 +1,190 @@
+\documentclass[a4paper, 11pt, oneside]{Dissertation}
+\usepackage{times}
+\usepackage{iftex}
+\ifXeTeX
+  \usepackage{fontspec}
+  \setmainfont{texgyretermes}[Extension=.otf, UprightFont=*-regular, BoldFont=*-bold, ItalicFont=*-italic, BoldItalicFont=*-bolditalic]
+  \setmonofont{texgyrecursor}[Extension=.otf, UprightFont=*-regular, BoldFont=*-bold, ItalicFont=*-italic, BoldItalicFont=*-bolditalic]
+\fi
+\usepackage{epsfig}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{latexsym}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage[english]{babel}
+\usepackage{multirow}
+\usepackage{amsmath}
+\usepackage{longtable}
+\usepackage{algorithmicx}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[numbers]{natbib}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usepackage{pgf}
+\usetikzlibrary{shapes,arrows,positioning,fit,backgrounds,calc,decorations.pathreplacing,matrix}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{url}
+\usepackage{tabularx}
+\usepackage{hyperref}
+\usepackage{float}        % enables [H] specifier - forces figure exactly here
+\usepackage{placeins}     % enables \FloatBarrier - stops floats crossing sections
+\usepackage{colortbl}     % enables \rowcolor in tables
+% Tighten spacing around floats so figures sit closer to their reference text
+\setlength{\textfloatsep}{10pt plus 2pt minus 2pt}
+\setlength{\floatsep}{8pt plus 2pt minus 2pt}
+\setlength{\tabcolsep}{4pt}
+\setlength{\intextsep}{8pt plus 2pt minus 2pt}
+
+% TikZ styles
+\tikzstyle{block} = [rectangle, draw, fill=blue!15, text width=5em, text centered, rounded corners, minimum height=3em]
+\tikzstyle{wideblock} = [rectangle, draw, fill=blue!15, text width=8em, text centered, rounded corners, minimum height=3em]
+\tikzstyle{arrow} = [thick,->,>=stealth]
+\tikzstyle{entity} = [rectangle, draw, fill=green!15, text width=5em, text centered, minimum height=2.5em]
+\tikzstyle{process} = [rectangle, draw, fill=orange!20, text width=6em, text centered, rounded corners, minimum height=3em]
+\tikzstyle{datastore} = [rectangle, draw, fill=yellow!20, text width=6em, text centered, minimum height=2.5em]
+\tikzstyle{actor} = [ellipse, draw, fill=cyan!15, text width=4em, text centered, minimum height=2.5em]
+\tikzstyle{dbbox} = [rectangle, draw, fill=purple!15, text width=6em, text centered, minimum height=2.5em]
+\tikzstyle{fkline} = [dashed, thick, ->, >=stealth, gray]
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\lstdefinelanguage{JavaScript}{
+  keywords={const,let,var,async,await,function,return,if,else,throw,new,for,of,in,try,catch,finally,module,require,null,true,false,typeof},
+  sensitive=true, comment=[l]{//}, morecomment=[s]{/*}{*/},
+  morestring=[b]', morestring=[b]", morestring=[b]`
+}
+\lstdefinelanguage{SQLx}{
+  keywords={SELECT,FROM,WHERE,AND,OR,ORDER,BY,LIMIT,FOR,UPDATE,INSERT,INTO,VALUES,SET,DELETE,CREATE,TABLE,ALTER,ADD,COLUMN,UNIQUE,INDEX,NULL,NOT,IN,AS,DESC,ASC,ON,JOIN,IS},
+  sensitive=false, comment=[l]{--}, morestring=[b]'
+}
+\lstset{
+  basicstyle=\small\ttfamily,
+  breaklines=true,
+  keywordstyle=\color{blue},
+  commentstyle=\color{codegreen},
+  numberstyle=\tiny\color{codegray},
+  frame=single,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false
+}
+
+\newcolumntype{L}[1]{>{\raggedright\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+\newcolumntype{C}[1]{>{\centering\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+
+\graphicspath{{Figures/}{./}}
+
+\long\def\symbolfootnote[#1]#2{\begingroup%
+\def\thefootnote{\fnsymbol{footnote}}\footnote[#1]{#2}\endgroup}
+\renewcommand{\baselinestretch}{1.2}
+\onecolumn
+
+%% ----------------------------------------------------------------
+\begin{document}
+\sloppy
+\pagenumbering{roman}
+
+%%Cover Page
+\input{./AuxPages/title1.tex}
+
+%% COPYRIGHT PAGE
+\input{AuxPages/Copyright.tex}
+
+%% CERTIFICATE PAGE
+\input{AuxPages/certificate.tex}
+
+% ACKNOWLEDGEMENTS PAGE
+\chapter*{Acknowledgments}
+\label{ch:ack}
+\input{AuxPages/acknowledgements.tex}
+
+% Abstract
+\chapter*{Abstract}
+\label{ch:abs}
+\input{AuxPages/abstract.tex}
+
+\pagestyle{fancy}
+%--------------------------------------------------------
+\tableofcontents
+\listoffigures
+\listoftables
+
+% List of Abbreviations
+\chapter*{List of Abbreviations}
+\addcontentsline{toc}{chapter}{List of Abbreviations}
+\lhead{\emph{List of Abbreviations}}
+\input{AuxPages/abbreviations.tex}
+\newpage
+
+%% ----------------------------------------------------------------
+\mainmatter
+
+\chapter{Introduction}
+\label{ch:intro}
+\lhead{\emph{Chapter 1: Introduction}}
+\input{Chapters/Chapter1.tex}
+
+\chapter{Literature Review}
+\label{ch:literature}
+\lhead{\emph{Chapter 2: Literature Review}}
+\input{Chapters/Chapter2.tex}
+
+\chapter{System Design and Architecture}
+\label{ch:design}
+\lhead{\emph{Chapter 3: System Design and Architecture}}
+\input{Chapters/Chapter3.tex}
+
+\chapter{Implementation and Results}
+\label{ch:impl}
+\lhead{\emph{Chapter 4: Implementation and Results}}
+\input{Chapters/Chapter4.tex}
+
+\chapter{Enhanced Hospital Modules}
+\label{ch:modules}
+\lhead{\emph{Chapter 5: Enhanced Hospital Modules}}
+\input{Chapters/Chapter5.tex}
+
+\chapter{Testing and Quality Assurance}
+\label{ch:testing}
+\lhead{\emph{Chapter 6: Testing and Quality Assurance}}
+\input{Chapters/Chapter6.tex}
+
+\chapter{Deployment and Operations}
+\label{ch:deploy}
+\lhead{\emph{Chapter 7: Deployment and Operations}}
+\input{Chapters/Chapter7.tex}
+
+\chapter{Conclusions and Future Work}
+\label{ch:conclude}
+\lhead{\emph{Chapter 8: Conclusions and Future Work}}
+\input{Chapters/conclusion.tex}
+
+%% ----------------------------------------------------------------
+\appendix
+\chapter{Installation and Setup Guide}
+\label{app:setup}
+\lhead{\emph{Appendix A: Installation and Setup Guide}}
+\input{Chapters/AppendixA.tex}
+
+\chapter{User Guide by Role}
+\label{app:ui}
+\lhead{\emph{Appendix B: User Guide by Role}}
+\input{Chapters/AppendixB.tex}
+
+%% ----------------------------------------------------------------
+\addtotoc{Bibliography}
+\addtocontents{Bibliography}{\vspace{2em}}
+\newpage
+\lhead{\emph{Bibliography}}
+\nocite{*}
+\small{\bibliography{bibch1}{}}
+\bibliographystyle{ieeetr}
+
+\end{document}

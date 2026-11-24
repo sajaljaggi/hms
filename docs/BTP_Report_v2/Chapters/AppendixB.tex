@@ -1,0 +1,42 @@
+This appendix describes the main screens available to each type of user and the order in which they are typically used.
+
+\section{Visitor}
+
+\begin{itemize}
+    \item \textbf{Home (\texttt{/})}: hospital information, specialities and a link to sign in or register.
+    \item \textbf{Find your way (\texttt{/navigate})}: choose ``From'' and ``To'' locations, optionally tick \emph{step-free route}, and read the numbered directions with the floor and distance of each step.
+    \item \textbf{MediBot}: the chat button at the bottom right opens the assistant, which can suggest a speciality for described symptoms and list doctors. Booking through MediBot requires signing in as a patient and follows the same rules as the booking page.
+\end{itemize}
+
+\section{Patient}
+
+\begin{enumerate}
+    \item \textbf{Register and sign in} (\texttt{/login}).
+    \item \textbf{Book an appointment} (\texttt{/patient/book}): choose a speciality, a doctor, a date within the next 14 days and a free 15-minute slot, select \emph{In person} or \emph{Video}, add a reason and confirm. A notification confirms the booking. A patient can hold up to five upcoming visits, and one per doctor per day.
+    \item \textbf{My appointments} (\texttt{/patient/history}): see upcoming and past visits, pay the consultation fee with the \emph{Pay} button, join a paid video visit with the \emph{Join} button from 15 minutes before the start and wait there until the doctor admits you, cancel an upcoming visit before it starts (a paid visit is refunded), open prescription files, and rate completed visits.
+    \item \textbf{Payments} (\texttt{/patient/payments}): history of all payments with status and reference numbers.
+    \item \textbf{Medical records} (\texttt{/patient/records}) and \textbf{Profile} (\texttt{/patient/profile}).
+    \item \textbf{Notifications}: the bell icon shows unread alerts; clicking one opens the related page.
+\end{enumerate}
+
+\section{Doctor}
+
+\begin{enumerate}
+    \item \textbf{Dashboard}: today's schedule and counts of pending and completed appointments.
+    \item \textbf{Appointments} (\texttt{/doctor/appointments}): complete a visit from 15 minutes before its start or cancel it, open video consultations, admit the waiting patient and mark the consultation completed, and upload prescriptions (\texttt{/doctor/prescribe}).
+    \item \textbf{Emergency} (\texttt{/doctor/emergency}): register an arrival with vital signs, accept or override the suggested ESI level, work the queue from the top, assign, treat, discharge or transfer, and press \emph{Request bed} when the patient must be admitted.
+    \item \textbf{Beds} (\texttt{/doctor/beds}): see ward occupancy, request a bed for a patient (ward type, urgency, reason), follow your requests, see the beds of your admitted patients and request their discharge.
+    \item \textbf{Blood bank} (\texttt{/doctor/blood}): check stock by group and component, raise a request for a patient with an urgency, and cancel own pending requests.
+\end{enumerate}
+
+\section{Administrator}
+
+\begin{enumerate}
+    \item \textbf{Dashboard}: hospital-wide statistics.
+    \item \textbf{Doctors, Patients, Appointments, Slots}: create and edit doctor accounts with a profile photo, search and page through patients and appointments, cancel or complete visits, toggle individual slots, block whole days and regenerate slots.
+    \item \textbf{Beds} (\texttt{/admin/beds}): create wards and beds, put free beds into maintenance or reserve them, work the \emph{Requests} tab (assign a bed, approve a discharge, or reject with a reason), and admit walk-in patients from the bed grid, where beds with a requested discharge are highlighted.
+    \item \textbf{Blood bank} (\texttt{/admin/blood}): register donors, record donations, view and discard units, and fulfil or reject requests.
+    \item \textbf{Emergency} (\texttt{/admin/emergency}): the same board as doctors, alerts for ESI level 1 and 2 arrivals and emergency bed requests, and direct admission to a bed.
+    \item \textbf{Payments} (\texttt{/admin/payments}): ledger of all payments with totals, 50 per page, including cancelled paid visits marked \emph{refund due}.
+    \item \textbf{Navigation map}: add or remove locations and connections through the navigation API.
+\end{enumerate}

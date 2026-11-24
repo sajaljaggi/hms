@@ -1,0 +1,675 @@
+\FloatBarrier
+\section{Development Environment}
+
+The system was developed using the following environment configuration:
+
+\begin{itemize}
+    \item \textbf{Operating System}: macOS / Windows 11
+    \item \textbf{Code Editor}: Visual Studio Code
+    \item \textbf{Database}: MySQL 8.0 / MariaDB via XAMPP / MAMP locally; MySQL 8 on Aiven in production
+    \item \textbf{Cache}: Redis 7 (optional locally; started by \texttt{docker-compose})
+    \item \textbf{Node.js Version}: v20 LTS
+    \item \textbf{Package Manager}: npm
+    \item \textbf{API Testing}: Postman, Jest + Supertest
+    \item \textbf{Browser Testing}: Playwright with system Chrome
+    \item \textbf{Version Control}: Git / GitHub, feature branches merged through pull requests with CI checks
+\end{itemize}
+
+The frontend development server runs on \texttt{http://localhost:5173} (Vite) and the backend Express server on \texttt{http://localhost:5001}. CORS is configured to allow credentialed cross-origin requests only from the configured frontend origin. The backend process and its database session both run in the Asia/Kolkata time zone (Section~\ref{sec:tz}).
+
+\FloatBarrier
+\section{Backend Implementation}
+
+\FloatBarrier
+\subsection{Project Structure}
+
+The backend is organized following the MVC (Model-View-Controller) pattern adapted for RESTful APIs:
+
+\begin{lstlisting}[language=bash, caption=Backend Directory Structure]
+backend/
+  server.js          # Entry point: listen, cron jobs, graceful exit
+  app.js             # Express app and middleware chain (used by tests)
+  config/
+    db.js            # MySQL pool, session time zone
+    redis.js         # ioredis client (fails open)
+  routes/            # 14 route files: auth, patient, doctor,
+                     # appointment, admin, chatbot, notification,
+                     # bed, bloodBank, emergency, teleconsult,
+                     # navigation, payment, file
+  controllers/       # one controller per route file
+  services/
+    appointmentService.js bedService.js
+    bedRequestService.js  bloodBankService.js
+    notificationService.js paymentGateway.js
+  validators/        # Zod schemas per module
+  middleware/
+    auth.js  role.js  csrf.js  rateLimiter.js
+    validate.js  upload.js  errorHandler.js
+  utils/
+    generateSlots.js  transaction.js  errors.js
+    triage.js  bloodCompatibility.js  pathfinding.js
+    cache.js  cookies.js  dates.js  sql.js
+    videoAccess.js
+  database/
+    schema.sql  migration_*.sql  applySchema.js
+    seedDemo.js        # optional demo data
+  tests/
+    unit/  integration/  helpers/  setup/
+  Dockerfile  start.sh
+\end{lstlisting}
+
+\FloatBarrier
+\subsection{Database Connection Pool}
+
+The MySQL connection pool is configured with a limit of 10 concurrent connections, ensuring efficient handling of parallel API requests without exhausting database resources. Managed databases require TLS, which is enabled with \texttt{DB\_SSL=true} and, when available, verified against the provider's CA certificate. Every new connection first pins its session time zone to IST, so that \texttt{NOW()} on a UTC cloud server agrees with the slot times stored in IST; if this fails, the connection is destroyed rather than used with the wrong zone.
+
+\begin{lstlisting}[language=JavaScript, caption=MySQL Connection Pool Configuration]
+const pool = mysql.createPool({
+  host: process.env.DB_HOST,
+  port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : undefined,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  ...(useSSL && { ssl: sslOption }),
+});
+pool.on('connection', (conn) => conn.query(`SET time_zone = '+05:30'`, (err) => {
+  if (err) conn.destroy();   // never serve queries in the wrong zone
+}));
+const db = pool.promise();
+\end{lstlisting}
+
+\FloatBarrier
+\subsection{Authentication Implementation}
+
+Password hashing uses bcryptjs, providing a good balance between security strength and computation time. In version 1 a single JWT with a 7-day expiry was returned to the client. Version 2 issues a 15-minute access token and a 7-day refresh token and stores both in httpOnly cookies, so they are invisible to JavaScript:
+
+\begin{lstlisting}[language=JavaScript, caption=Session Cookies (utils/cookies.js)]
+const baseOptions = {
+  httpOnly: true,
+  secure: isProd,                     // HTTPS only in production
+  sameSite: isProd ? 'none' : 'lax',  // frontend and API on different domains
+};
+res.cookie('access_token', accessToken,
+  { ...baseOptions, path: '/', maxAge: 15 * 60 * 1000 });
+res.cookie('refresh_token', refreshToken,     // only sent to /api/auth/*
+  { ...baseOptions, path: '/api/auth', maxAge: 7 * 24 * 60 * 60 * 1000 });
+\end{lstlisting}
+
+The authentication middleware verifies the access-token cookie on every protected request and attaches the decoded payload to \texttt{req.user}. The role middleware immediately follows. It now accepts a list of roles, because several modules are shared by doctors and administrators:
+
+\begin{lstlisting}[language=JavaScript, caption=Role Enforcement Middleware]
+const requireRole = (...roles) => (req, res, next) => {
+  if (!req.user || !roles.includes(req.user.role))
+    return next(new ForbiddenError('You do not have access to this resource.'));
+  next();
+};
+// e.g. router.use(auth, requireRole('admin', 'doctor'));
+\end{lstlisting}
+
+\FloatBarrier
+\subsection{Appointment Booking Transaction}
+
+To prevent race conditions in concurrent bookings of the same slot, the booking controller uses a database transaction with a check-before-insert pattern. In version 2 this pattern is provided by the shared \texttt{inTransaction} helper (Section~\ref{sec:txhelper}); the essential steps are:
+
+\begin{lstlisting}[language=JavaScript, caption=Atomic Appointment Booking with Transaction]
+const conn = await db.getConnection();
+await conn.beginTransaction();
+const [slot] = await conn.query(
+  'SELECT * FROM doctor_slots WHERE id=? AND is_booked=0 FOR UPDATE',
+  [slotId]);
+if (!slot.length) throw new Error('Slot already booked');
+await conn.query('UPDATE doctor_slots SET is_booked=1 WHERE id=?',[slotId]);
+await conn.query('INSERT INTO appointments ... VALUES (...)',[...]);
+await conn.commit();
+\end{lstlisting}
+
+The \texttt{FOR UPDATE} lock ensures that between the check and the insert, no other transaction can book the same slot.
+
+\FloatBarrier
+\subsection{Automated Slot Generation}
+
+The slot generation utility creates 15-minute intervals from 09:00 to 16:45 (32 slots) for every registered doctor on a given date. An \texttt{INSERT IGNORE} statement against the \texttt{UNIQUE(doctor\_id, date, time)} key ensures no duplicates are created. In version 2 the 32 rows for a doctor are inserted with one multi-row statement instead of 32 separate queries.
+\begin{lstlisting}[language=JavaScript, caption=Slot Generation Logic (Simplified)]
+function buildTimeSlots() {
+  const slots = [];
+  for (let hour = 9; hour < 17; hour++)
+    for (let min = 0; min < 60; min += 15)
+      slots.push(`${pad(hour)}:${pad(min)}:00`);
+  return slots; // 32 slots
+}
+async function generateSlotsForDoctorDate(doctorId, date) {
+  const values = buildTimeSlots().map(t => [doctorId, date, t, 0, 1]);
+  await db.query(`INSERT IGNORE INTO doctor_slots
+    (doctor_id, date, time, is_booked, is_available) VALUES ?`, [values]);
+}
+\end{lstlisting}
+
+The \texttt{node-cron} schedule triggers this utility at midnight daily and also cleans up past unbooked slots:
+
+\begin{lstlisting}[language=JavaScript, caption=Cron Job for Daily Slot Management]
+async function maintainSlots(when) {       // at start-up and at midnight
+  try { await cleanupPastSlots(); }         // a failure must not skip
+  catch (err) { console.error(when, err); } // the next 14 days
+  try { await generateRollingSlots(14); }
+  catch (err) { console.error(when, err); }
+}
+cron.schedule('0 0 * * *', () => maintainSlots('Cron'));
+
+// cleanupPastSlots: keep any slot an appointment still points to
+DELETE s FROM doctor_slots s
+ WHERE s.date < CURDATE() AND s.is_booked = 0
+   AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.slot_id = s.id)
+\end{lstlisting}
+
+\FloatBarrier
+\subsection{Prescription File Upload}
+
+In the first version, Multer saved prescription files to an \texttt{uploads/} folder that was served as public static files, and the type was checked only from the file name. A review found two problems with this design: anyone who learnt a file's URL could download another patient's prescription, and the free hosting plan wipes the container's disk on every restart, so files disappeared. Version 2 changes the design in three ways:
+
+\begin{itemize}
+    \item \textbf{Stored in the database.} Multer keeps the upload in memory, and the controller writes it into the \texttt{prescription\_files} or \texttt{doctor\_images} table in the same transaction as the prescription. Prescription files are limited to 5~MB and photos to 2~MB.
+    \item \textbf{Type checked by content.} The real type is detected from the file's first bytes (its ``magic number''), never from the name or the type claimed by the browser, so a script renamed to \texttt{.pdf} is rejected. The stored name is sanitised.
+    \item \textbf{Served only to its owners.} \texttt{GET /api/files/prescriptions/:id} joins the file to its prescription and returns it only to that prescription's patient or doctor, with \texttt{Cache-Control: private, no-store} and \texttt{X-Content-Type-Options: nosniff}. Anyone else receives \texttt{404}, so the file's existence is not revealed. The public \texttt{/uploads} folder no longer exists.
+\end{itemize}
+
+\begin{lstlisting}[language=JavaScript, caption=Upload Type Detection by File Signature (middleware/upload.js; simplified)]
+const SIGNATURES = [
+  { mime: 'application/pdf', test: (b) => b.subarray(0, 5).toString('latin1') === '%PDF-' },
+  { mime: 'image/png',  test: (b) => b.subarray(0, 8).equals(PNG_MAGIC) },
+  { mime: 'image/jpeg', test: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+  { mime: 'image/webp', test: (b) => b.subarray(0, 4).toString('latin1') === 'RIFF'
+                                  && b.subarray(8, 12).toString('latin1') === 'WEBP' },
+];
+const detectMime = (buf) =>
+  SIGNATURES.find((s) => buf.length >= 12 && s.test(buf))?.mime ?? null;
+\end{lstlisting}
+
+A prescription's patient is always taken from its appointment, never from the request body, re-saving a prescription without a new file keeps the existing file, and a cancelled visit cannot be prescribed or completed. Patients' pages keep the line breaks of the doctor's notes, so structured prescriptions (diagnosis, medicines, advice, follow-up) remain readable.
+
+\FloatBarrier
+\subsection{Request Validation with Zod}
+
+Every route that accepts input declares a Zod schema for its body, query string or path parameters, and the generic \texttt{validate(schema, source)} middleware rejects invalid requests with \texttt{400} before any controller code runs. Schemas also coerce and normalise values (for example query strings to numbers) and supply defaults, so controllers work only with clean, typed data. The same schemas document the API contract in code.
+
+\begin{lstlisting}[language=JavaScript, caption=Validation Schema and Route (payments)]
+const listPaymentsQuerySchema = z.object({
+  page:  z.coerce.number().int().min(1).max(10000).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+router.get('/', requireRole('admin'),
+  validate(v.listPaymentsQuerySchema, 'query'), c.listPayments);
+\end{lstlisting}
+
+\FloatBarrier
+\subsection{Centralised Error Handling}
+
+Controllers do not build error responses themselves. They throw typed errors (\texttt{ValidationError} 400, \texttt{AuthError} 401, \texttt{ForbiddenError} 403, \texttt{NotFoundError} 404, \texttt{ConflictError} 409, or a generic \texttt{AppError} with any status and machine-readable code, such as \texttt{402 PAYMENT\_REQUIRED}), and a single error-handling middleware turns them into the uniform JSON envelope. Unknown errors are logged on the server and returned as a generic 500 message, so stack traces and SQL details never reach the client.
+
+\FloatBarrier
+\subsection{Transaction Helper and Deadlock Retry}
+\label{sec:txhelper}
+
+All multi-statement operations in the new modules use one helper, \texttt{inTransaction(fn)}. It obtains a connection, begins a transaction, runs the callback, commits, and always releases the connection. On error it rolls back; if the error is a MySQL deadlock it retries the whole callback up to two more times on a fresh connection. Because the callback may run more than once, it must not have side effects outside the database, which is why notifications are sent only after the helper returns.
+
+\begin{lstlisting}[language=JavaScript, caption=Shared Transaction Helper (utils/transaction.js)]
+const RETRYABLE = new Set(['ER_LOCK_DEADLOCK']);
+const MAX_RETRIES = 2;
+async function inTransaction(fn) {
+  for (let attempt = 0; ; attempt++) {
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
+      const result = await fn(conn);
+      await conn.commit();
+      return result;
+    } catch (err) {
+      try { await conn.rollback(); } catch { /* keep original error */ }
+      if (!RETRYABLE.has(err.code) || attempt >= MAX_RETRIES) throw err;
+    } finally {
+      conn.release();
+    }
+  }
+}
+\end{lstlisting}
+
+\FloatBarrier
+\subsection{Availability Caching with Redis}
+
+The list of free slots for a doctor on a date is the most frequently read data in the system. It is cached in Redis under a key per doctor and date with a 120-second time-to-live, and the key is invalidated whenever a booking, a slot toggle or a day block changes that doctor's slots. The cache is designed to \emph{fail open}: if Redis is down or not configured, every cache call logs a warning and returns nothing, and the controller simply queries MySQL. Redis therefore improves performance but is never required for correctness.
+
+\FloatBarrier
+\subsection{Automatic Schema Migrations}
+
+The production database cannot be edited by hand on every deployment, so the migration script (\texttt{migrate.js}, using \texttt{applySchema.js}) runs on every start-up from \texttt{start.sh} and applies \texttt{schema.sql} followed by every \texttt{migration\_*.sql} file. All statements are written to be idempotent (\texttt{CREATE TABLE IF NOT EXISTS}, seed inserts guarded by a row count), and errors that only mean ``already applied'' (duplicate column, duplicate key name, table exists) are ignored, so the same migrations can run any number of times on any environment, including a fresh test database.
+
+\FloatBarrier
+\section{Frontend Implementation}
+
+\FloatBarrier
+\subsection{Application Structure}
+
+The React application is organized into role-specific page directories:
+
+\begin{lstlisting}[language=bash, caption=Frontend Directory Structure]
+frontend/src/
+  App.tsx              # Root router with protected routes
+  context/
+    AuthContext.tsx    # Global auth state (session from /auth/me)
+  services/
+    api.ts             # Axios instance: cookies, CSRF, silent refresh
+    authService.ts  patientService.ts  doctorService.ts
+    adminService.ts  chatbotService.ts
+    bedService.ts  bloodBankService.ts  emergencyService.ts
+    teleconsultService.ts  notificationService.ts
+    navigationService.ts  paymentService.ts
+  pages/
+    Home.tsx  Navigate.tsx            # public pages
+    auth/Login.tsx
+    patient/  Dashboard  BookAppointment  History
+              MedicalHistory  Payments  Profile
+    doctor/   Dashboard  Appointments  Prescribe
+    admin/    Dashboard  AdminDoctors  AdminPatients
+              AdminAppointments  AdminPayments  SlotManagement
+    shared/   BedManagement  BloodBank  EmergencyBoard
+              TeleconsultRoom          # used by doctor and admin
+  components/
+    Layout.tsx         # Shared navigation shell
+    Chatbot.tsx        # MediBot floating widget
+    NotificationBell.tsx  PatientPicker.tsx  usePayment.tsx
+  utils/
+    renderMarkdown.ts  triage.ts  loadScript.ts  ...
+\end{lstlisting}
+
+\FloatBarrier
+\subsection{Authentication Context and Route Protection}
+
+The \texttt{AuthContext} provides global authentication state using React's Context API and \texttt{useState}. It exposes the \texttt{user}, \texttt{login()}, and \texttt{logout()} functions. In version 1 the JWT was persisted in \texttt{localStorage} and attached as a header. In version 2 the frontend never sees a token: the browser stores the httpOnly cookies and sends them automatically (\texttt{withCredentials: true}), and on page load the context restores the user by calling \texttt{GET /api/auth/me}. The Axios instance has two interceptors: one copies the readable CSRF cookie into the \texttt{X-CSRF-Token} header of every state-changing request, and the other performs one silent refresh when a request fails with \texttt{401}, sharing a single refresh call among all requests that failed at the same time:
+
+\begin{lstlisting}[language=JavaScript, caption=Axios Instance with CSRF Header and Silent Refresh]
+const api = axios.create({ baseURL: API_BASE_URL, withCredentials: true });
+api.interceptors.request.use((config) => {
+  if (UNSAFE_METHODS.has(config.method)) {
+    const csrf = getCookie('csrf_token');
+    if (csrf) config.headers['X-CSRF-Token'] = csrf;
+  }
+  return config;
+});
+api.interceptors.response.use((r) => r, async (error) => {
+  const req = error.config;
+  if (error.response?.status === 403 && !req._csrfRetry &&
+      error.response.data?.error?.code === 'CSRF_INVALID') {
+    req._csrfRetry = true;          // two first requests raced for the cookie
+    return api(req);                // resend once with the current token
+  }
+  if (error.response?.status === 401 && !req._retry && !isAuthRoute(req.url)) {
+    req._retry = true;
+    refreshPromise ??= api.post('/auth/refresh').finally(() => (refreshPromise = null));
+    await refreshPromise;
+    return api(req);              // retry once with the new access token
+  }
+  return Promise.reject(error);
+});
+\end{lstlisting}
+
+The CSRF retry was added after a defect in the deployed system: when a returning user opened the site, two first requests could each receive a new CSRF token, and the later one overwrote the cookie, so a request sent in between failed with \texttt{403}. The server now gives CSRF failures their own error code and keeps the CSRF cookie as long as the refresh cookie, and the client resends such a request once.
+
+Route protection is implemented by checking \texttt{AuthContext} state in the \texttt{App.tsx} router. Unauthenticated users are redirected to the login page, and the layout of each portal sends a user of another role back to their own section. Only the user's id, name, e-mail and role are kept in \texttt{localStorage} to draw the interface before \texttt{/api/auth/me} answers; tokens are never stored there.
+
+\FloatBarrier
+\subsection{Appointment Booking Flow}
+
+The multi-step booking flow in \texttt{BookAppointment.tsx} manages state through React \texttt{useState} hooks. Figure~\ref{fig:bookflow} illustrates the step-by-step flow. In version 2 the confirmation step also asks whether the visit is in person or by video; after booking, the appointment appears in the patient's history with a \emph{Pay} button while it is still payable, and with a \emph{Join} button for paid video visits.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=0.6cm, font=\small]
+\node[process, fill=blue!20, text width=3cm] (S1) {Step 1:\\Select Specialization};
+\node[process, fill=blue!20, text width=3cm, below=of S1] (S2) {Step 2:\\Select Doctor};
+\node[process, fill=blue!20, text width=3cm, below=of S2] (S3) {Step 3:\\Pick Date};
+\node[process, fill=blue!20, text width=3cm, below=of S3] (S4) {Step 4:\\Choose Time Slot};
+\node[process, fill=green!30, text width=3cm, below=of S4] (S5) {Step 5:\\In person / Video,\\Confirm \& Book};
+
+\draw[arrow] (S1) -- node[right, font=\scriptsize]{\texttt{GET /api/doctors}} (S2);
+\draw[arrow] (S2) -- node[right, font=\scriptsize]{user selects} (S3);
+\draw[arrow] (S3) -- node[right, font=\scriptsize]{\texttt{GET /api/slots}} (S4);
+\draw[arrow] (S4) -- node[right, font=\scriptsize]{user selects} (S5);
+\draw[arrow] (S5.east) -- ++(1.5,0) node[right, font=\scriptsize]{\texttt{POST /api/appointments/book}};
+\end{tikzpicture}
+\caption{Patient Appointment Booking Flow}
+\label{fig:bookflow}
+\end{figure}
+
+\FloatBarrier
+\section{AI Chatbot (MediBot) Implementation}
+
+\FloatBarrier
+\subsection{System Prompt Engineering}
+
+In the case of Gemini model, initialization is done using a structure-based system prompt, which provides details regarding the persona of the MediBot, what it can do, the specializations that are available, how to book the session, required output format, and other rules.
+
+\FloatBarrier
+\subsection{Action Block Parsing}
+
+After each Gemini API response, the frontend parses for a structured action block at the end of the message text using a regex pattern:
+
+\begin{lstlisting}[language=JavaScript, caption=Action Block Parsing in Chatbot Frontend]
+const actionMatch = text.match(/>>>ACTION:(\{.*?\})/s);
+if (actionMatch) {
+  const action = JSON.parse(actionMatch[1]);
+  if (action.type === 'SHOW_DOCTORS') fetchDoctors(action.specialization);
+  if (action.type === 'SHOW_APPOINTMENTS') fetchAppointments(action.filter);
+  // ... handle other action types
+  cleanText = text.replace(/>>>ACTION:.*$/s, '').trim();
+}
+\end{lstlisting}
+
+
+\FloatBarrier
+\subsection{Safe Rendering of Chatbot Output}
+
+MediBot's replies use a small subset of Markdown (bold text and links), which the widget converts to HTML. In the first version this conversion inserted the model's text into the page without escaping it, so a reply containing HTML, which a user could provoke through prompt injection, would have been executed by the browser (cross-site scripting). The renderer was rewritten as a separate, tested function: it first escapes the five HTML special characters, then converts the Markdown, and only accepts link targets that are absolute \texttt{http(s)} URLs or same-site paths. Protocol-relative targets such as \texttt{//evil.com} and \texttt{/\textbackslash evil.com}, which browsers treat as links to another host, and schemes such as \texttt{javascript:} are left as plain text.
+
+\begin{lstlisting}[language=JavaScript, caption=Escaping Renderer for MediBot Replies (utils/renderMarkdown.ts)]
+const SAFE_URL = /^(https?:\/\/|\/(?![/\\]))/i;
+export function renderMarkdown(text) {
+  return text
+    .replace(/[&<>"']/g, (c) => ESCAPES[c])          // escape first
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\[(.*?)\]\((.*?)\)/g, (m, label, url) =>
+      SAFE_URL.test(url) ? `<a href="${url}" ...>${label}</a>` : m)
+    .replace(/\n/g, '<br/>');
+}
+\end{lstlisting}
+
+\FloatBarrier
+\section{Security Analysis}
+\label{sec:security}
+
+Table~\ref{tab:security} summarizes the security measures implemented in the system. Rows marked (v2) were added or changed in this phase.
+
+\begin{longtable}{|L{3.3cm}|L{10.2cm}|}
+\caption{Security Implementation Summary} \label{tab:security} \\
+\hline
+\textbf{Security Aspect} & \textbf{Implementation} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Security Aspect} & \textbf{Implementation} \\
+\hline
+\endhead
+Password Storage & bcryptjs with salt factor 10; plaintext passwords never stored \\
+\hline
+Authentication (v2) & 15-minute access JWT and 7-day rotating refresh JWT in httpOnly, Secure, SameSite cookies; token type checked \\
+\hline
+Authorization & Two-layer middleware: JWT verification + role enforcement; multi-role guards; ownership checks return 404 so that other users' records are not revealed; least privilege: doctors request beds, only the admin assigns and discharges \\
+\hline
+CSRF (v2) & Double-submit token: random readable cookie (lifetime of the refresh cookie) echoed in \texttt{X-CSRF-Token} on every POST/PUT/PATCH/DELETE; failures carry the code \texttt{CSRF\_INVALID} and are retried once by the client; only the HMAC-signed webhook is exempt \\
+\hline
+Input Validation (v2) & Zod schemas on body, query and params of every route; unknown or malformed input rejected with 400 \\
+\hline
+Rate Limiting (v2) & Login/register: 10 \emph{failed} attempts per 15 minutes per IP, and login also 10 failures per account e-mail, so password guessing stays limited when attackers rotate IPs; chatbot: 20 messages per minute. \texttt{TRUST\_PROXY\_HOPS=2} behind Vercel and Render, so the limiter sees each visitor's own IP \\
+\hline
+SQL Injection & Parameterized queries via mysql2 prepared statements throughout; dynamic \texttt{IN} lists built with placeholders \\
+\hline
+XSS (v2) & React escapes output by default; MediBot Markdown renderer escapes HTML and whitelists link schemes \\
+\hline
+Payments (v2) & Amount computed on server from doctor's fee; HMAC-SHA256 signature verified with constant-time compare; webhook signed and idempotent; mock mode refused in production \\
+\hline
+Video Rooms (v2) & 128-bit random room names; only the booked patient and doctor can obtain them; patient must have paid and is admitted by the doctor from a waiting room; time window enforced; on JaaS a 2-hour RS256 token scoped to the room, doctor as moderator, recording disabled \\
+\hline
+File Upload Safety (v2) & In-memory upload; type detected from the file's first bytes, not its name; 5 MB (prescriptions) and 2 MB (photos) caps; stored in MySQL; prescription files served only to their patient and doctor, with \texttt{nosniff} and \texttt{no-store} \\
+\hline
+Security Headers (v2) & \texttt{X-Content-Type-Options: nosniff}, \texttt{X-Frame-Options: DENY}, \texttt{Referrer-Policy}, HSTS in production, on the API, Nginx and Vercel; \texttt{X-Powered-By} disabled \\
+\hline
+CORS Policy & Credentialed requests allowed only from the configured frontend origin \\
+\hline
+Transport (v2) & HTTPS in production; TLS to the managed database, verified against the provider's CA certificate \\
+\hline
+Error Exposure & Global error handler returns sanitized messages; stack traces suppressed in production \\
+\hline
+Double-Booking & UNIQUE constraint on \texttt{active\_slot\_id} + \texttt{FOR UPDATE} transaction lock; same pattern for beds, bed requests and payments; per-patient booking limits stop one account hoarding the schedule \\
+\hline
+Secrets & All keys in environment variables, never committed; separate test database and \texttt{.env.test}; personal files that had been committed under \texttt{uploads/} were removed from the repository \\
+\hline
+\end{longtable}
+
+\FloatBarrier
+\section{Testing and Validation}
+
+\FloatBarrier
+\subsection{Pre-Seeded Test Data}
+
+The database was seeded with 1 Administrator account and 20 Doctor accounts distributed across 5 medical specializations (4 doctors per specialization: Cardiology, Dermatology, General Medicine, Neurology, and Orthopedics). Each doctor's schedule was pre-populated with 15-minute slots for 14 days, providing a realistic test environment. The migrations of the second phase additionally seed three wards with 22 beds (General Ward A: 10 beds, ICU: 6, Emergency Bay: 6) and a three-floor navigation map of 20 locations and 24 connections. Automated tests do not use this data: each test suite creates its own users and records in a separate test database and deletes them afterwards.
+
+\FloatBarrier
+\subsection{Functional Test Cases}
+
+Table~\ref{tab:tests} presents the key functional test cases executed during system validation. Test cases T1--T15 come from the first version, where they were executed by hand. T16--T55 cover the new modules and security features; each of them is checked by at least one automated unit, integration, component or end-to-end test (Chapter~\ref{ch:testing}). T41--T55 were added with the bed request workflow, the video waiting room and the fixes of two code audits.
+
+\begin{longtable}{|C{0.8cm}|L{3.9cm}|L{3.4cm}|L{3.5cm}|C{1.2cm}|}
+\caption{Functional Test Cases} \label{tab:tests} \\
+\hline
+\textbf{ID} & \textbf{Test Description} & \textbf{Input} & \textbf{Expected Output} & \textbf{Result} \\
+\hline
+\endfirsthead
+\hline
+\textbf{ID} & \textbf{Test} & \textbf{Input} & \textbf{Expected} & \textbf{Result} \\
+\hline
+\endhead
+T1 & Patient registration with valid data & Name, email, password & 201 Created, JWT returned & PASS \\
+\hline
+T2 & Registration with duplicate email & Existing email & 409 Conflict & PASS \\
+\hline
+T3 & Login with correct credentials & Email + password & 200 OK, JWT + user object & PASS \\
+\hline
+T4 & Login with wrong password & Wrong password & 401 Unauthorized & PASS \\
+\hline
+T5 & Access patient route without token & No Authorization header & 401 Unauthorized & PASS \\
+\hline
+T6 & Doctor accessing patient route & Doctor JWT & 403 Forbidden & PASS \\
+\hline
+T7 & Book available slot & Valid doctorId, slotId & 201 Created, appointment record & PASS \\
+\hline
+T8 & Book already-booked slot & Booked slotId & 409 Conflict & PASS \\
+\hline
+T9 & Doctor updates appointment to completed & Appointment ID + status & 200 OK & PASS \\
+\hline
+T10 & Doctor uploads prescription PDF & Multipart file + notes & 201 Created, file saved & PASS \\
+\hline
+T11 & Patient views medical history & Auth patient & List of prescriptions & PASS \\
+\hline
+T12 & Admin creates new doctor & Doctor + user data & Doctor account created & PASS \\
+\hline
+T13 & Admin deletes user & User ID & 200 OK, user removed & PASS \\
+\hline
+T14 & Chatbot symptom recommendation & ``I have chest pain'' & Cardiology recommendation & PASS \\
+\hline
+T15 & Cron slot generation (simulated) & Trigger generateSlots() & Slots created for next 14 days & PASS \\
+\hline
+T16 & Request without CSRF header & POST with session cookie, no X-CSRF-Token & 403 Forbidden & PASS \\
+\hline
+T17 & Refresh token sent as access token & Cookie with type = refresh & 401, rejected by type check & PASS \\
+\hline
+T18 & Invalid body & Booking with slotId = "abc" & 400 with field errors & PASS \\
+\hline
+T19 & Video booking while payments are not configured & consultationType = video & 400, booking refused & PASS \\
+\hline
+T20 & Record donation within 56 days & Same donor twice & 409 Conflict & PASS \\
+\hline
+T21 & Fulfil request for B$-$ packed RBC & Stock: B+, B$-$, O$-$, O+ & Only B$-$ then O$-$ units issued, earliest expiry first & PASS \\
+\hline
+T22 & Fulfil request with too little stock & Need 3, have 2 & 409, no unit issued & PASS \\
+\hline
+T23 & Allocate occupied bed & Second patient & 409 Bed is not available & PASS \\
+\hline
+T24 & Admit already-admitted patient & Second bed & 409 Patient already admitted & PASS \\
+\hline
+T25 & Two concurrent admissions of one patient & Parallel requests & One 201, one 409, no 500 & PASS \\
+\hline
+T26 & Discharge then re-admit & Allocation id & 200, bed free, re-admit 201 & PASS \\
+\hline
+T27 & ESI suggestion & 2+ resources, SpO\textsubscript{2} 88\% & Level 2 suggested & PASS \\
+\hline
+T28 & Emergency queue order & Levels 3, 1, 2 & Ordered 1, 2, 3; level 1 alerts staff & PASS \\
+\hline
+T29 & Invalid status transition & Reopen a discharged case & 409 Conflict & PASS \\
+\hline
+T30 & Join unpaid video visit (patient) & In window, unpaid & 402 Payment Required & PASS \\
+\hline
+T31 & Join outside window & 2 h before start & 403 with start time & PASS \\
+\hline
+T32 & Join someone else's visit & Other patient & 404 Not Found & PASS \\
+\hline
+T33 & Shortest route & Main Entrance $\rightarrow$ Neurology & Path with steps and total distance & PASS \\
+\hline
+T34 & Accessible route & Same, accessible=true & Route uses lifts, no stairs & PASS \\
+\hline
+T35 & Create payment order & Own unpaid appointment & Amount = doctor fee $\times$ 100 paise & PASS \\
+\hline
+T36 & Verify with forged signature & Wrong HMAC & 400, appointment stays unpaid & PASS \\
+\hline
+T37 & Webhook delivered twice & Same event id & Processed once, second is a no-op & PASS \\
+\hline
+T38 & Pay for past appointment & Started over 60 min ago & 400, Pay button hidden & PASS \\
+\hline
+T39 & Notifications & Booking made & Patient and doctor each get one; mark-all-read clears count & PASS \\
+\hline
+T40 & MediBot XSS payload & Reply contains \texttt{<img onerror>} & Rendered as text, no script runs & PASS \\
+\hline
+T41 & Doctor requests a bed; admin assigns it & Patient, ward type, urgency & Bed allocated, doctor becomes attending doctor, both notified & PASS \\
+\hline
+T42 & Second pending bed request for the same patient & Duplicate request & 409 Conflict & PASS \\
+\hline
+T43 & Doctor allocates a bed directly & Doctor session & 403 Forbidden & PASS \\
+\hline
+T44 & Emergency bed request assigned by admin & ESI case, request-bed & Case status becomes admitted & PASS \\
+\hline
+T45 & Patient joins a paid video visit before admission & In window, paid & \{waiting: true\}, no room details & PASS \\
+\hline
+T46 & Doctor admits the waiting patient & POST /admit & Patient's next join returns room and token & PASS \\
+\hline
+T47 & Stranger opens another patient's prescription file & Other user's session & 404 Not Found & PASS \\
+\hline
+T48 & Upload a script renamed to .pdf & Wrong file signature & 400, file rejected & PASS \\
+\hline
+T49 & Doctor cancels a paid visit & Appointment id & Slot free again, payment refund\_due, patient notified & PASS \\
+\hline
+T50 & Patient cancels a visit that has started & Past start time & 400, not cancelled & PASS \\
+\hline
+T51 & Delete an appointment that has a payment & Admin delete & 409, payment kept & PASS \\
+\hline
+T52 & Book a sixth upcoming visit / second visit with same doctor that day & Booking & 409 BOOKING\_LIMIT & PASS \\
+\hline
+T53 & Book 20 days ahead & Date outside window & 400, no slot rows created & PASS \\
+\hline
+T54 & Complete a visit 2 hours early & Doctor action & 400, still pending & PASS \\
+\hline
+T55 & 10 failed logins on one account from 10 IPs; 12 successful logins from one IP & Login requests & 11th attempt on the account returns 429; all 12 successes return 200 & PASS \\
+\hline
+\end{longtable}
+
+All 40 functional test cases passed, confirming that the system behaves correctly across all core workflows and error conditions.
+
+\FloatBarrier
+\subsection{System Workflow Validation}
+
+Figure~\ref{fig:seqdiag} illustrates the sequence of interactions during a complete patient appointment booking session.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, node distance=1cm]
+
+% Lifelines
+\node[draw, fill=blue!15, text width=1.5cm, text centered] (P) at (0,0) {Patient (Browser)};
+\node[draw, fill=orange!15, text width=1.5cm, text centered] (A) at (4,0) {Express API};
+\node[draw, fill=green!15, text width=1.5cm, text centered] (D) at (8,0) {MySQL DB};
+
+\draw[dashed] (P) -- (0,-8.5);
+\draw[dashed] (A) -- (4,-8.5);
+\draw[dashed] (D) -- (8,-8.5);
+
+% Messages
+\draw[arrow] (0,-0.8) -- node[above, font=\tiny]{POST /api/auth/login} (4,-0.8);
+\draw[arrow] (4,-1.1) -- node[above, font=\tiny]{SELECT user WHERE email} (8,-1.1);
+\draw[arrow, dashed] (8,-1.4) -- node[above, font=\tiny]{user row} (4,-1.4);
+\draw[arrow, dashed] (4,-1.7) -- node[above, font=\tiny]{200 OK + JWT} (0,-1.7);
+
+\draw[arrow] (0,-2.4) -- node[above, font=\tiny]{GET /api/doctors?spec=Cardiology} (4,-2.4);
+\draw[arrow] (4,-2.7) -- node[above, font=\tiny]{SELECT doctors WHERE spec} (8,-2.7);
+\draw[arrow, dashed] (8,-3.0) -- node[above, font=\tiny]{doctors list} (4,-3.0);
+\draw[arrow, dashed] (4,-3.3) -- node[above, font=\tiny]{200 OK + doctors} (0,-3.3);
+
+\draw[arrow] (0,-4.0) -- node[above, font=\tiny]{GET /api/slots?doctorId=5\&date=2025-05-10} (4,-4.0);
+\draw[arrow] (4,-4.3) -- node[above, font=\tiny]{SELECT slots WHERE doctor,date,!booked} (8,-4.3);
+\draw[arrow, dashed] (8,-4.6) -- node[above, font=\tiny]{available slots} (4,-4.6);
+\draw[arrow, dashed] (4,-4.9) -- node[above, font=\tiny]{200 OK + slots} (0,-4.9);
+
+\draw[arrow] (0,-5.6) -- node[above, font=\tiny]{POST /api/appointments/book} (4,-5.6);
+\draw[arrow] (4,-5.9) -- node[above, font=\tiny]{BEGIN TXN; UPDATE slot; INSERT appt} (8,-5.9);
+\draw[arrow, dashed] (8,-6.2) -- node[above, font=\tiny]{success} (4,-6.2);
+\draw[arrow] (4,-6.5) -- node[above, font=\tiny]{COMMIT} (8,-6.5);
+\draw[arrow, dashed] (4,-6.8) -- node[above, font=\tiny]{201 Created} (0,-6.8);
+
+\end{tikzpicture}
+\caption{Sequence Diagram: Patient Appointment Booking}
+\label{fig:seqdiag}
+\end{figure}
+
+\FloatBarrier
+\subsection{Automated Test Results}
+
+Table~\ref{tab:testsummary} summarises the automated test suites. Their design is described in Chapter~\ref{ch:testing}.
+
+\begin{table}[H]
+\centering
+\caption{Automated Test Suite Summary}
+\label{tab:testsummary}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|L{3.6cm}|L{3.4cm}|C{1.5cm}|C{1.5cm}|L{3.0cm}|}
+\hline
+\rowcolor{blue!12}
+\textbf{Suite} & \textbf{Tool} & \textbf{Files} & \textbf{Tests} & \textbf{Result} \\
+\hline
+Backend unit & Jest & 21 & 165 & 165 passed \\
+\hline
+Backend integration & Jest + Supertest, real MySQL and Redis & 12 & 80 & 80 passed$^{*}$ \\
+\hline
+Frontend component and contract & Vitest + Testing Library & 19 & 126 & 126 passed \\
+\hline
+End-to-end & Playwright (Chrome) & 9 & 12 & 12 passed$^{*}$ \\
+\hline
+\textbf{Total} & & \textbf{61} & \textbf{383} & \\
+\hline
+\end{tabular}
+\\[4pt]
+\footnotesize{$^{*}$ These suites need a local MySQL server (and Redis for the cache test); the integration suite also runs in CI against MySQL and Redis service containers.}
+\end{table}
+
+\FloatBarrier
+\section{System Features Summary}
+
+Table~\ref{tab:features} provides a summary of all implemented features organized by user role.
+
+\begin{table}[H]
+\centering
+\caption{Feature Summary by User Role}
+\label{tab:features}
+\begin{tabular}{|L{2cm}|L{11.5cm}|}
+\hline
+\textbf{Role} & \textbf{Features} \\
+\hline
+Patient & Registration \& Login; Profile management (name, age, weight, medical history, guardian, address); Specialization-based doctor browsing; Real-time slot selection and appointment booking (in person or video); Appointment history with prescription download; Doctor rating (1--5 stars) for completed visits; AI chatbot (MediBot) access; \textbf{Cancel an upcoming visit (refund flagged if paid); Online payment and payment history; Join video consultation through the waiting room; Notifications} \\
+\hline
+Doctor & Login; Dashboard with daily stats (total appointments, pending, completed, today's schedule); Appointment list view with patient details; Complete (from 15 minutes before the start) or cancel appointments; Upload prescription (PDF/image) with clinical notes; Create additional availability slots; \textbf{Bed and discharge requests, own patients' beds; Blood stock view and requests; Emergency board (register, triage, treat, request bed); Waiting room: admit the patient, run and complete video consultations; Notifications} \\
+\hline
+Admin & Login; System dashboard (total users, doctors, appointments, stats); Full CRUD on patient accounts; Full CRUD on doctor accounts (creates linked user + doctor records); Server-side search and paging of users and appointments; Appointment management (view, complete, cancel, delete unless paid); Slot management (view by doctor/date, toggle individual slots, block entire days, manually trigger slot generation); \textbf{Wards and beds; bed and discharge request queue; Blood bank (donors, donations, units, issue/reject requests); Emergency board; Payments ledger with totals and refunds due; Navigation map editing; Notifications} \\
+\hline
+MediBot & Available to all users (unauthenticated for chat, authenticated for booking); Symptom-to-specialization mapping; Doctor recommendations; Conversational appointment booking through the same endpoint and rules as the booking page; Appointment history retrieval (patients only); replies rendered through an escaping Markdown renderer \\
+\hline
+Visitor & \textbf{Public hospital navigation with shortest and accessible routes}; doctor and slot browsing; MediBot chat \\
+\hline
+\end{tabular}
+\end{table}

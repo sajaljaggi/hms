@@ -1,0 +1,66 @@
+\section{Conclusions}
+
+The present project work has introduced Care \& Cure HMS – an extensive end-to-end solution of Hospital Management System which caters to the deficiencies of open-source and academic HMS solutions available currently – and has extended it from an out-patient appointment system into a hospital digital ecosystem. Conclusions drawn from the project work are:
+
+\textbf{Role-Based Architecture:} The solution has been able to successfully implement the three-role based architecture (Patient, Doctor, Administrator), together with a public visitor experience, with the use of middleware and enforcing strong access control policy such that users cannot access anything beyond their designated role due to JWT based token verification and role checking middleware implementation. Multi-role guards allow doctors and administrators to share clinical modules while ownership checks keep each patient's records, including prescription files, private, and the principle of least privilege is applied to beds: doctors request, the administrator assigns.
+
+\textbf{Dynamic Appointment Engine:} The specialization-based appointment booking, along with availability checking of slots at real time and transactional level double booking prevention using database locking technique with the use of a \texttt{UNIQUE} constraint on \texttt{active\_slot\_id}, has resulted in an efficient and race condition-free appointment engine which generates 14-day slots automatically. Appointments can now be in person or by video, can be cancelled by any party with the slot freed and paid visits flagged for refund, are limited per patient so that no account can hoard the schedule, and the availability lookups are cached.
+
+\textbf{AI Integration:} The MediBot chat bot, powered by the Google Gemini API, has shown that large language models are able to follow constraints imposed by prompt engineering in order to execute deterministic actions. The natural language + action block approach implemented has made conversation with the MediBot more friendly, and its output is now rendered safely so that a manipulated reply cannot run code in the user's browser.
+
+\textbf{Comprehensive Admin Control:} The Admin Dashboard has provided an exhaustive feature set which enables the administrator to manage user accounts as well as appointment slots in a granular fashion, and now also wards and beds, the blood bank, the emergency board, the navigation map and the payments ledger. This solves a typical problem associated with academic HMS where there is lack of any or rudimentary administrator feature sets.
+
+\textbf{Security:} The combination of bcrypt password hashing, JWT based authentication in httpOnly cookies with short-lived access tokens and refresh rotation, CSRF double-submit tokens, Zod validation of every input, rate limiting, parameterized SQL queries, file type validation, signed and idempotent payment webhooks, and a restrictive CORS policy has provided proper security features to make the web app ready for live deployment.
+
+\textbf{Hospital Operations Modules:} The seven new modules show that clinical rules can be encoded directly and verifiably in software: ABO/Rh compatibility and first-expiry-first-out issue in the blood bank, the five-level Emergency Severity Index in the emergency department, a timed and payment-gated join window and a doctor-controlled waiting room for video consultations, and Dijkstra's shortest-path algorithm for step-free indoor navigation.
+
+\textbf{Data Integrity under Concurrency:} Combining row locks in a fixed order, a deadlock-retrying transaction helper and database unique keys as the final guard has made bed admission, blood issue, booking and payment safe under concurrent use, which was demonstrated by tests that fire conflicting requests simultaneously.
+
+\textbf{Quality and Delivery:} The original 15 manual functional tests have been replaced by 383 automated tests at four levels, checked by mutation testing and two code audits and run in a continuous integration pipeline, and the system has been containerised and deployed to the cloud.
+
+All the 15 function test cases of the first version and the 40 new functional test cases have successfully passed, along with all automated tests, indicating that all aspects of the implementation have worked as expected.
+
+\section{Future Work}
+
+Two items proposed as future work in the first report, \emph{Online Payment Gateway} and \emph{Telemedicine Extension}, have been implemented in this phase, and \emph{Real-time Messaging} has been partly addressed by in-app notifications. A few possible extensions to further increase the functionality of Care \& Cure HMS include:
+
+\begin{enumerate}
+    \item \textbf{Real-time Messaging and Delivery Channels:} Pushing notifications and waiting-room updates instantly with WebSockets (Socket.IO) instead of polling, and delivering them by e-mail and SMS (for example with Nodemailer and Twilio), would enhance patient engagement and make emergency alerts reach staff who are away from the screen.
+
+    \item \textbf{Integration with EHR Standards:} To ensure that the HMS can interact with other health information technologies, adding interoperability features using standards like HL7 FHIR would be useful.
+
+    \item \textbf{Admin Analytics Dashboard:} Adding visualizations to the admin dashboard using chart libraries (like Chart.js and Recharts) will enable data-driven decision-making within hospitals, for example bed occupancy trends, emergency waiting times by ESI level, blood stock and wastage, and revenue.
+
+    \item \textbf{Mobile App:} Creating a mobile app using React Native or Flutter will further enhance the system's usability by providing patients with a mobile application.
+
+    \item \textbf{Advanced MediBot:} The chatbot can be enhanced by adding persistent memory capabilities and integrating external drug and symptom checking APIs for richer guidance. However, proper safety warnings should be provided before giving any clinical advice.
+
+    \item \textbf{Multi-Hospital System:} Extending the database and overall HMS infrastructure to enable multi-hospital operations and department-specific management would enable the system to function across multiple hospital branches.
+
+    \item \textbf{Laboratory and Radiology Module:} Ordering tests, recording results and attaching reports to the patient's history would close the last gap identified in the comparison with existing hospital systems.
+
+    \item \textbf{In-patient Billing and Pharmacy:} Combining bed charges (the daily rate is already stored), procedures, medicines and consultation fees into a single bill, and issuing the refunds that are now only flagged through the Razorpay Refunds API.
+
+    \item \textbf{Blood Bank Extensions:} Cross-match records, donor eligibility questionnaires, barcode labels for units, and transfer of stock between hospitals.
+
+    \item \textbf{Richer Navigation:} A visual floor map with the route drawn on it, QR codes at junctions to set the starting point, and A* search if the map grows large.
+
+    \item \textbf{Full Test Automation in CI:} Running the Vitest and Playwright suites in the GitHub Actions pipeline, adding code-coverage reporting, and automated mutation testing with a tool such as Stryker.
+
+    \item \textbf{Audit Trail and Compliance:} An immutable log of who viewed or changed clinical and financial records, data retention policies, and alignment with India's Digital Personal Data Protection Act, 2023 before handling real patient data.
+\end{enumerate}
+
+\section{Limitations}
+
+The current system has the following limitations, which should be considered before deployment in a real hospital:
+
+\begin{itemize}
+    \item \textbf{Stateless refresh tokens.} Refresh tokens are rotated but not stored on the server, so a stolen refresh token cannot be revoked before it expires (at most 7 days). A token store or token version per user would allow forced logout.
+    \item \textbf{Triage is a suggestion only.} The ESI level is computed from the inputs the clinician enters and must always be confirmed by a trained clinician; the system does not replace clinical judgement.
+    \item \textbf{Single-hospital, single-time-zone design.} Slot times are stored in IST and the system assumes one hospital.
+    \item \textbf{Free-tier hosting.} The deployed instance sleeps when idle, keeps uploaded files in the free 1~GB database, and runs with test payment keys (see Table~\ref{tab:readiness}).
+    \item \textbf{Manual refunds and polling.} Refunds are flagged but issued by hand, and the waiting room and notifications use polling (every 5 and 30 seconds) rather than push messages.
+    \item \textbf{Public default accounts.} The demonstration administrator and doctor accounts have a published password and must be changed before real use.
+    \item \textbf{Comparison data.} The comparison with Jaipur hospitals in Chapter~\ref{ch:literature} is based on publicly available information collected for the first report and has not been re-verified.
+    \item \textbf{No real-user evaluation.} The system has been validated through automated and manual testing by the team, not through a usability study with patients and hospital staff.
+\end{itemize}

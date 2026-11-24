@@ -1,0 +1,149 @@
+\FloatBarrier
+\section{Background and Motivation}
+
+Healthcare service providers around the world have come under increasing pressure to be efficient and error-free. With conventional management practices involving the use of pen-and-paper records, telephone calls, and manual scheduling becoming inadequate in today's fast-paced healthcare environment, there has been an evolution of web-based Hospital Management Systems (HMS). HMS systems help hospitals manage patient registration, appointment scheduling, medical history, medication dispensation, and other administrative tasks using a unified interface.
+
+Today, HMS solutions leverage artificial intelligence to provide a seamless experience to patients. AI-driven chatbots act as assistants to patients by guiding them in understanding their symptoms and making appointments without requiring any human interaction.
+
+Care and Cure HMS is a complete hospital management solution with modern web architecture, role-based access control, and an AI-enabled conversational assistant named MediBot.
+
+The first version of Care \& Cure HMS concentrated on the out-patient journey: finding a doctor, booking a slot, consulting, and receiving a prescription. A real hospital, however, runs many other services in parallel. Blood must be collected, stored and issued safely; beds must be allocated and released; emergency arrivals must be prioritised by clinical urgency rather than arrival order; patients increasingly expect video consultations and online payment; and first-time visitors need help finding their way inside a large building. In the absence of a shared digital platform these services are typically run on registers, whiteboards and phone calls, which makes them slow, error-prone and impossible to audit. The motivation for the second phase of this project was therefore to grow Care \& Cure HMS from an appointment system into a \emph{hospital digital ecosystem} in which all of these services share one database, one security model and one user interface.
+
+\FloatBarrier
+\section{Problem Statement}
+
+Even though commercially available HMS systems exist, there are various shortcomings associated with their deployment, including:
+
+\begin{enumerate}
+    \item \textbf{Disjointed workflows}: There exist many HMS systems that cater only to either patients or administrators but not both. Few HMS systems offer a seamless experience for all the involved participants: patients, doctors, and administration.
+    \item \textbf{Non-dynamic appointment scheduling}: Fixed slots with manual appointment booking result in ineffective appointments, especially in a busy OPD scenario.
+    \item \textbf{Absence of AI help}: Patients might be unaware about the required medical specialty to see for their issues. Absence of guidance leads to inappropriate booking by the patients and loss of valuable time from both parties.
+    \item \textbf{Absence of role enforcement}: Role-based access is rarely present in many lightweight HMS deployments, hence exposing sensitive data to various risks.
+    \item \textbf{Inefficient prescription management}: Many free HMS applications do not include features such as electronic prescriptions, file upload/download facilities.
+    \item \textbf{Manual blood bank records}: Stock is tracked on paper, expiry dates are missed, and the compatibility of a donor unit with a recipient is checked by hand, which risks both wastage and unsafe transfusion.
+    \item \textbf{No real-time bed visibility}: Ward occupancy is known only to the ward staff, so admitting doctors call around for a free bed, and the same bed can be promised to two patients.
+    \item \textbf{First-come, first-served emergency queues}: Without a standard triage scale, a critically ill patient may wait behind patients with minor complaints.
+    \item \textbf{No remote consultation or online payment}: Patients must travel for every consultation and queue at the reception desk to pay consultation fees.
+    \item \textbf{No timely alerts and poor wayfinding}: Patients and staff are not told when something relevant happens (a booking, an admission, a critical arrival), and visitors lose time finding departments in a multi-floor building.
+\end{enumerate}
+
+\FloatBarrier
+\section{Objectives}
+
+The primary objectives of this project are:
+
+\begin{enumerate}
+    \item Development of an application that will be able to handle three roles, namely Patient, Doctor, and Administrator.
+    \item Development of a dynamic and flexible scheduler which will show availability of appointment slots in real-time, specialization filters for doctors and avoids double booking.
+    \item Developing a cron job to automatically generate slots based on time periods such that it will create 14 days slots for each and every registered doctor.
+    \item Integrating MediBot with Google Gemini functionalities that will be able to help in symptoms assessment and also recommend suitable doctors, and allow appointment booking.
+    \item Implementing a security module for the whole project using JWT (JSON Web Token) and bcrypt for password hashing.
+    \item Prescription Upload module that allows doctors to upload prescriptions made for patients which patients can access later.
+    \item Allowing full management of user accounts for patients and doctors, appointments, and slot details by administrators.
+    \item Proving normalization of the project database which has at least five tables and constraints for integrity.
+\end{enumerate}
+
+The objectives added in the second phase are:
+
+\begin{enumerate}
+    \setcounter{enumi}{8}
+    \item A \textbf{Blood Bank} module that records donors and donations, enforces the minimum interval between donations, computes component expiry, and issues only ABO/Rh-compatible units in first-expiry-first-out order.
+    \item A \textbf{Bed Management} module with wards, beds, admissions and discharges, in which doctors request beds and discharges and the administrator assigns them, and the database itself prevents a bed or a patient from having two open allocations.
+    \item An \textbf{Emergency Management} board that triages arrivals with the five-level Emergency Severity Index (ESI), orders the queue by severity, enforces valid status transitions, and admits patients directly into a bed.
+    \item A \textbf{Teleconsultation} facility in which a patient can book a video appointment, wait in a virtual waiting room, and be admitted by the doctor to a private video room within a fixed window around the appointment time.
+    \item An in-app \textbf{Notifications and Alerts} service that informs patients and staff of bookings, admissions, payments and critical emergency arrivals.
+    \item A public \textbf{Hospital Navigation} feature that computes the shortest indoor route between two locations, including a step-free route for wheelchair users.
+    \item An \textbf{Online Payment} module using the Razorpay gateway in which the amount is always taken from the server, every payment is verified with an HMAC-SHA256 signature, and webhooks are processed exactly once.
+    \item Hardening of the platform with cookie-based sessions, CSRF protection, schema validation, rate limiting and caching, and verification of all of the above with an automated unit, integration and end-to-end test suite running in continuous integration.
+\end{enumerate}
+
+\FloatBarrier
+\section{Scope of the Project}
+
+\textbf{WITHIN THE PROJECT'S SCOPE:}
+\begin{itemize}
+    \item Self-registration of patients, patient profile management, and appointment history of patients.
+    \item Management of doctor profiles (created by the administrator), scheduling of doctors, and prescription upload by doctors.
+    \item Control Panel of the administrator managing all entities like users, doctors, appointments, and slots.
+    \item Chatbot for guiding patients on symptoms and booking appointments.
+    \item Automated appointment slots and cleanup of appointment slots using scheduled cron jobs.
+    \item Backend with RESTful APIs with JWT authentication and authorization based on roles.
+    \item Blood bank inventory, donors, donations, blood requests and compatible issue.
+    \item Ward and bed management with doctor requests, admission and discharge.
+    \item Emergency department case board with ESI triage and direct admission.
+    \item Video teleconsultation for appointments booked as video visits, with a waiting room.
+    \item In-app notifications with unread counts.
+    \item Indoor navigation across floors with an accessible-route option.
+    \item Online payment of consultation fees, cancellation with refund flagging, an admin payments ledger, and a patient payment history.
+\end{itemize}
+
+\textbf{OUT OF THE PROJECT'S SCOPE:}
+\begin{itemize}
+    \item Integration with any external EHR system.
+    \item Native mobile app.
+    \item Management of lab tests and radiology reports.
+    \item E-mail and SMS delivery of notifications (notifications are in-app only).
+    \item In-patient billing for bed charges, pharmacy and procedures (only consultation fees are collected online), and automatic refunds (refunds are flagged and issued from the gateway dashboard).
+    \item Clinical decision support beyond the ESI triage suggestion; the final triage level is always chosen by the clinician.
+\end{itemize}
+
+Payment gateway integration and video consultation, which were listed as out of scope in the first version, have been brought into scope and implemented in this phase.
+
+\FloatBarrier
+\section{Technology Overview}
+
+The system is built on a three-tier architecture using a modern JavaScript ecosystem:
+
+\begin{itemize}
+    \item \textbf{Frontend}: React.js (v19) with TypeScript, the Vite build tool, Tailwind CSS v4 for styling, React Router v7 for client-side navigation, and Axios for API communication.
+    \item \textbf{Backend}: Node.js (v20) with Express.js v5, organized into RESTful route, controller, service and validator modules.
+    \item \textbf{Database}: MySQL with the \texttt{mysql2} driver, using connection pooling for performance and an automatic schema migration step on start-up.
+    \item \textbf{Security}: JSON Web Tokens (JWT) in httpOnly cookies with refresh-token rotation, bcryptjs for password hashing, CSRF double-submit tokens, Zod request validation, and \texttt{express-rate-limit}.
+    \item \textbf{AI}: Google Gemini API (\texttt{@google/generative-ai}, model \texttt{gemini-2.5-flash}) for the MediBot chatbot.
+    \item \textbf{File Handling}: Multer middleware for prescription and doctor profile image uploads.
+    \item \textbf{Scheduling}: \texttt{node-cron} for automated daily slot generation.
+    \item \textbf{Caching}: Redis (through \texttt{ioredis}) for the slot availability cache, designed to fail open when Redis is unavailable.
+    \item \textbf{Payments and Video}: Razorpay payment gateway (with a mock mode for development and testing) and Jitsi video rooms hosted on JaaS (8x8.vc) with server-signed, room-scoped tokens.
+    \item \textbf{Testing and Delivery}: Jest and Supertest (backend), Vitest and React Testing Library (frontend), Playwright (end-to-end), ESLint, GitHub Actions, Docker, Render, Vercel and Aiven MySQL.
+\end{itemize}
+
+\FloatBarrier
+\section{Organization of the Report}
+
+The remainder of this report is organized as follows. Chapter~\ref{ch:literature} presents a review of existing hospital management systems and of the clinical and technical literature behind each new module. Chapter~\ref{ch:design} details the system architecture, database design, data flow diagrams, module specifications and API. Chapter~\ref{ch:impl} covers the implementation of the core platform, its security, testing and results. Chapter~\ref{ch:modules} describes the design and implementation of the seven enhanced modules. Chapter~\ref{ch:testing} explains the testing strategy and quality assurance process, and Chapter~\ref{ch:deploy} describes deployment and operations. Chapter~\ref{ch:conclude} presents conclusions, limitations and future directions. Appendix~\ref{app:setup} gives installation instructions and Appendix~\ref{app:ui} is a short user guide for each role.
+
+\FloatBarrier
+\section{Summary of Enhancements in This Version}
+
+Table~\ref{tab:enhancements} summarises how the system has changed between the first version described in the previous report and the version described here.
+
+\begin{table}[H]
+\centering
+\caption{Version 1 versus Version 2 of Care \& Cure HMS}
+\label{tab:enhancements}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|L{3.6cm}|L{4.6cm}|L{5.4cm}|}
+\hline
+\rowcolor{blue!12}
+\textbf{Area} & \textbf{Version 1} & \textbf{Version 2} \\
+\hline
+Clinical modules & Appointments, prescriptions, ratings, MediBot & Adds blood bank, beds, emergency, teleconsultation, notifications, navigation, payments \\
+\hline
+Database & 6 tables & 21 tables, applied by an idempotent migration runner on start-up; uploaded files stored in the database \\
+\hline
+Session handling & JWT (7 days) in \texttt{localStorage} & 15-minute access token and 7-day rotating refresh token in httpOnly cookies \\
+\hline
+Request protection & CORS only & CSRF double-submit token, Zod validation of body, query and params, rate limits on login and chatbot \\
+\hline
+Concurrency & \texttt{FOR UPDATE} on slot booking & Shared transaction helper with deadlock retry, documented lock order, database unique keys as the final guard \\
+\hline
+Frontend language & JavaScript/TSX & TypeScript throughout, React 19 \\
+\hline
+Testing & 15 manual functional tests & 383 automated tests (unit, integration, component, contract, end-to-end) plus mutation testing and two code audits \\
+\hline
+Workflows & Doctors and admins act directly & Doctors request beds and discharges, the admin assigns; video waiting room; one cancellation path with refunds; booking limits \\
+\hline
+Delivery & Local only & Docker images, GitHub Actions CI, deployment on Render, Vercel and Aiven \\
+\hline
+\end{tabular}
+\end{table}

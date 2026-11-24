@@ -1,0 +1,172 @@
+\FloatBarrier
+\section{Introduction}
+
+Designing a Hospital Management System using a web platform is an area of study that has been going on actively for over twenty years. Improvements in cloud technology, relational database modeling, RESTful API, and most recently, the advent of artificial intelligence, have greatly enhanced the scope of today's HMS applications. The current chapter discusses the previous literature that is related to this study and includes conventional HMS, role-based access control in hospitals, scheduling algorithms, and integrating an artificial intelligence chatbot. It then reviews the clinical and technical background of the modules added in the second phase: blood banking and transfusion compatibility, bed management, emergency triage, telemedicine, digital payments, indoor wayfinding, and web application security.
+
+\FloatBarrier
+
+
+\FloatBarrier
+\section{Role-Based Access Control in Healthcare Systems}
+
+RBAC, or Role-Based Access Control, is a mature security model where system permissions are attached to roles, and users gain permissions by taking on roles. In healthcare information systems, RBAC is especially important because distinct groups of actors—patients, physicians, and managers—will need to access the same data subject to vastly different permission levels.
+
+In HMS, a patient should be able to access only their appointment information and prescriptions, whereas a physician will have access to all their appointment information and must not be allowed to alter appointment data for other physicians. Managers will require more permissions but cannot be allowed to act in a physician's stead.
+
+Care \& Cure HMS uses a two-tiered middleware strategy for implementing RBAC, with the JWT middleware validating the identity of the user and the role middleware validating their authorization level before controller execution.
+
+\FloatBarrier
+\section{Appointment Scheduling in Healthcare}
+
+Appointment scheduling has been one of the most extensively researched problems in the operations research of healthcare organizations. In fixed-interval scheduling, which is adopted by most clinics, working hours are broken into equally sized intervals of time. Its main benefit is simplicity; its main drawback is limited flexibility considering non-uniformity in consultation duration and patients' likelihood not to show up.
+
+On the other hand, in dynamic slot generation, a computer program creates appointment slots based on doctors' availability. In their study, Nwafor et al. suggested creating a web application where doctors could indicate their availability hours and the application would generate suitable appointment slots for them. Such a solution will be the basis for developing the current slot generation component, in which a cron job will produce 15-min slots for each physician during the upcoming 14 days every night.
+
+Preventing double-booking is essential when designing appointment schedules. Using a \texttt{UNIQUE} constraint on the \texttt{slot\_id} foreign key in the \texttt{appointments} table prevents double-booking of slots from happening at the database level – an approach that follows best database design practices in transaction management. In version 2 the unique key is placed on an \texttt{active\_slot\_id} column that is cleared when a visit is cancelled, so that a cancelled slot can be booked again while two live bookings of one slot remain impossible.
+
+\FloatBarrier
+\section{AI Chatbots in Healthcare}
+
+The inclusion of chatbot technology in health care portals has become more common due to advancements in large language models (LLMs). In healthcare organizations that performed a literature review on the use of conversational agents in health care, it was established that chatbots were useful in increasing engagement, adherence, and health education. The major use cases for chatbots in health care are symptom checkers, mental health assistants, medication reminders, and appointment booking.
+
+Rule-based chatbots, which function based on preset decision trees, represent the initial generation of healthcare conversational agents. These bots are reliable but inflexible, being unable to cope with various formulations of queries posed to them. In contrast to rule-based conversational agents, conversational agents that rely on LLMs, such as GPT-4, Gemini, and Claude, are capable of comprehending natural language.
+
+As for the current study, MediBot, the chatbot designed, leverages the Gemini API provided by Google in order to generate responses within a set of prompts that instruct it to behave according to rules applicable in health care, to recommend specializations according to the symptoms, and to conduct appointment booking step-by-step in action blocks.
+\FloatBarrier
+\section{Modern Web Technologies for Healthcare Applications}
+
+\subsection{React.js and Single-Page Applications}
+
+React.js, which was created by Meta in 2013, is currently one of the most widely used libraries for building web applications \cite{reactdocs}. It has really great benefits because it has a design that allows code reuse, which is very important during the process of creation of applications. The fact that it uses single-page application design is extremely useful because no page refreshing is required. This is particularly significant for smooth operation of medical procedures.
+
+\subsection{Node.js and Express.js}
+
+The Node.js environment has a highly effective and event-driven I/O architecture which makes it very efficient for I/O-bound applications, for example, the HMS where multiple database transactions will be needed. It is because of its effectiveness and efficiency for such I/O bound application that it has gained popularity within the health care API community. Express.js acts as the web framework for Node.js.
+
+\subsection{MySQL and Relational Databases}
+
+MySQL continues to be the most prevalent open-source RDBMS. Its ability to adhere to ACID properties, foreign key constraints, and a vibrant community make it ideal for storing medical information, given the importance of referential integrity. Utilizing the \texttt{mysql2} driver in Node.js with connection pooling allows for effective processing of multiple queries to the database.
+
+\FloatBarrier
+\section{Blood Bank Management and Transfusion Safety}
+
+Blood is a perishable resource: each component has a fixed shelf life, and a unit transfused to an incompatible recipient can cause a fatal haemolytic reaction. Transfusion practice is therefore governed by well-established rules. For red-cell products (whole blood and packed red cells) a recipient may receive units of their own ABO group or of a group whose red cells carry no antigen the recipient has antibodies against; group O is the universal red-cell donor and group AB the universal recipient. For plasma the rule is reversed, since plasma carries antibodies rather than antigens, so group AB plasma can be given to anyone. Rh(D)-negative recipients should receive Rh-negative red cells, while the Rh factor is not relevant for plasma \cite{aabb2020}. Each component has a different storage life, commonly 35 days for whole blood in CPDA-1, 42 days for packed red cells in additive solution, five days for platelets, and up to one year for frozen plasma \cite{aabb2020}.
+
+Donor safety is equally important. The World Health Organization's donor-selection guidelines recommend a minimum interval between whole-blood donations so that the donor's iron stores can recover \cite{who2012donor}. A digital blood bank that encodes these rules can prevent the two most common failures of paper registers: issuing an incompatible unit, and letting units expire unused because older stock was not issued first. Care \& Cure HMS implements the compatibility tables, a 56-day donation interval, per-component expiry dates and a first-expiry-first-out (FEFO) issue order, with an exact group match preferred over a compatible substitute.
+
+\FloatBarrier
+\section{Hospital Bed Management}
+
+Bed availability is one of the main constraints on hospital flow. Proudlove et al. showed that overcrowding in accident and emergency departments is closely linked to the availability of in-patient beds, and that better bed management and visibility of occupancy are needed alongside extra capacity \cite{proudlove2003}. A bed management system needs to answer three questions in real time: which beds are free, who occupies each bed, and how full each ward is. It must also guarantee that one bed is never allocated to two patients and that one patient is never admitted to two beds at once. In Care \& Cure HMS the second guarantee is enforced not only in application logic but also by unique keys in the database, so that even a concurrent or buggy request cannot break it.
+
+\FloatBarrier
+\section{Emergency Department Triage}
+
+Triage is the process of sorting patients by the urgency of their condition. The Emergency Severity Index (ESI), developed in the United States and published by the Agency for Healthcare Research and Quality, is a five-level triage algorithm \cite{gilboy2012esi}. Level 1 patients need an immediate life-saving intervention; level 2 patients are in a high-risk situation, are confused or lethargic, or are in severe pain or distress; for the remaining patients the triage nurse estimates how many different resources (laboratory tests, imaging, intravenous fluids, specialist consultation and so on) will be needed. Patients expected to need two or more resources are level 3, unless their vital signs fall in a danger zone (for example a high heart rate or respiratory rate, or an oxygen saturation below 92\%), in which case they are up-triaged to level 2. One expected resource gives level 4 and none gives level 5. Because ESI is algorithmic, it can be expressed as a pure function and offered to the clinician as a suggestion. Care \& Cure HMS computes this suggestion while the case is being entered but always lets the clinician choose the final level, and orders the emergency queue by triage level and then by arrival time.
+
+\FloatBarrier
+\section{Telemedicine and Video Consultation}
+
+The World Health Organization describes telemedicine as the delivery of healthcare services, where distance is a critical factor, using information and communication technologies \cite{who2010telemedicine}. In India the Telemedicine Practice Guidelines issued in March 2020 gave registered medical practitioners a legal framework to consult by video, audio or text, and video consultation became mainstream during the COVID-19 pandemic \cite{mohfw2020telemedicine}. For a hospital system the main design questions are how to create a private room for each consultation, how to make sure only the right patient and doctor can join it, and when joining should be allowed. Care \& Cure HMS creates an unguessable room name for every video appointment, lets only the booked patient and doctor obtain it, requires the patient to have paid, and opens the room from 15 minutes before to 60 minutes after the scheduled start. The video itself is provided by Jitsi Meet, an open-source WebRTC conferencing platform \cite{jitsi}, hosted by its JaaS service so that rooms can be embedded and protected with signed tokens. Like a physical clinic, a virtual consultation also benefits from a waiting room, in which the clinician decides when the patient joins.
+
+\FloatBarrier
+\section{Digital Payments in Healthcare}
+
+Online payment removes the need to visit the reception desk before a consultation and gives both the patient and the hospital a reliable record. Payment gateways such as Razorpay follow a common pattern: the merchant server creates an \emph{order} for a fixed amount, the customer pays in a hosted checkout, and the gateway returns a payment identifier together with a signature, an HMAC-SHA256 digest of the order and payment identifiers keyed with the merchant's secret \cite{razorpaydocs}. HMAC is a standard construction for message authentication \cite{rfc2104}. The merchant must verify this signature on the server before trusting the payment, and should also process the gateway's asynchronous webhook, which is likewise signed, so that a payment completed after the customer closed the browser is still recorded. Because gateways may deliver the same webhook more than once, the handler must be idempotent. These principles shape the payment module described in Chapter~\ref{ch:modules}.
+
+\FloatBarrier
+\section{Indoor Wayfinding and Shortest-Path Routing}
+
+Large hospitals are notoriously hard to navigate, and time lost finding a department affects both patients and staff. An indoor map can be modelled as a weighted graph in which nodes are locations (entrances, departments, lifts, stairs, junctions) and edges are walkable connections weighted by distance. The shortest route between two nodes can then be computed with Dijkstra's algorithm \cite{dijkstra1959}, or with A* when a good distance heuristic is available \cite{hart1968}. Accessibility can be supported by marking edges that contain steps and removing them from the graph when a step-free route is requested. Care \& Cure HMS uses this model, stores both the forward and the reverse walking instruction for every edge, and returns a list of turn-by-turn steps with the total distance.
+
+\FloatBarrier
+\section{Web Application Security for Healthcare}
+
+Health applications hold highly sensitive personal data, which makes them attractive targets. The OWASP Top 10 lists broken access control, injection and security misconfiguration among the most critical web application risks \cite{owasp2021}. Storing session tokens in browser storage exposes them to any script running on the page, so current guidance favours httpOnly cookies; cookies, however, are attached automatically to cross-site requests, which in turn requires protection against cross-site request forgery, for example with the double-submit cookie pattern \cite{owaspcsrf}. JSON Web Tokens are defined in RFC~7519 \cite{rfc7519}. These references informed the security changes made in this phase, which are summarised in Section~\ref{sec:security}.
+
+\FloatBarrier
+\section{Comparison of Existing Systems}
+
+Table~\ref{tab:comparison} provides a side-by-side comparison of the Care \& Cure HMS against three real Jaipur hospitals and two widely-referenced academic/commercial systems.
+
+\begin{table}[H]
+\centering
+\caption{Comparison: Care \& Cure HMS vs.\ Real Jaipur Hospitals and Existing Systems}
+\label{tab:comparison}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{|L{3.4cm}|C{1.5cm}|C{1.5cm}|C{1.5cm}|C{1.5cm}|C{1.5cm}|}
+\hline
+\rowcolor{blue!12}
+\textbf{Feature} &
+\textbf{Care \& Cure HMS} &
+\textbf{SDMH, Jaipur} &
+\textbf{Fortis Escorts, Jaipur} &
+\textbf{M.G. Hospital, Jaipur} &
+\textbf{Apollo 24/7 (National)} \\
+\hline
+Own Patient Login Portal & \checkmark & $\times$ & Partial & $\times$ & \checkmark \\
+\hline
+Role-Based Access (3+ roles) & \checkmark & $\times$ & Partial & $\times$ & Partial \\
+\hline
+Real-Time Slot Availability & \checkmark & $\times$ & $\times$ & $\times$ & \checkmark \\
+\hline
+Instant Online Booking & \checkmark & Via 3rd party & Partial & $\times$ & \checkmark \\
+\hline
+Auto Slot Generation (Cron) & \checkmark & $\times$ & $\times$ & $\times$ & $\times$ \\
+\hline
+AI Chatbot (Symptom Guide) & \checkmark & $\times$ & $\times$ & $\times$ & \checkmark \\
+\hline
+Digital Prescription Download & \checkmark & $\times$ & $\times$ & $\times$ & \checkmark \\
+\hline
+Doctor Rating System & \checkmark & $\times$ & $\times$ & $\times$ & \checkmark \\
+\hline
+Doctor Dashboard & \checkmark & $\times$ & $\times$ & $\times$ & Partial \\
+\hline
+Admin Slot Management & \checkmark & $\times$ & $\times$ & $\times$ & $\times$ \\
+\hline
+Open Source / Extensible & \checkmark & $\times$ & $\times$ & Partial & $\times$ \\
+\hline
+Payment Integration & \checkmark & Via 3rd party & \checkmark & $\times$ & \checkmark \\
+\hline
+Lab / Diagnostic Reports & $\times$ & \checkmark & \checkmark & \checkmark & \checkmark \\
+\hline
+\end{tabular}
+\\[6pt]
+\footnotesize
+\textit{Sources: SDMH official website (sdmh.in), Fortis Healthcare (fortishealthcare.com), Apollo 24/7 platform. $\checkmark$ = fully available, Partial = available with limitations, $\times$ = not available.}
+\end{table}
+
+The analysis indicates that in terms of local Jaipur hospitals, \textbf{the SDMH and Mahatma Gandhi Hospitals do not have any native patient portal or online booking system at all} and rely completely on telephone helpdesks or other aggregator apps like Practo and HexaHealth. For Fortis Escorts Jaipur, which is part of the nationwide healthcare chain, a mobile application is provided; however, it does not include slot-level time booking capability and AI guidance.
+
+For the national system Apollo 24/7, AI symptom checking, online real-time booking capability, and even online prescriptions have been implemented. However, Apollo's solution is an isolated commercial platform without any extensibility potential for academic research, which integrates the telemedicine system with a pharmacy and diagnostic services to produce a significantly more complicated product than an outpatient HMS.
+
+The Care \& Cure HMS fills its unique niche: it includes the key functionality not available in \textit{any of the analyzed hospitals in Jaipur}---patient and doctor login portal, real-time appointment booking system, AI chatbot, access to prescriptions, and physician dashboard---all within a lightweight and academically extensible system. In the first version, online payment and laboratory reports were the only two missing features. Online payment has now been implemented (Section~\ref{sec:mod-payments}); laboratory reports remain a future improvement area (Chapter~\ref{ch:conclude}). The hospital columns of Table~\ref{tab:comparison} reflect the survey carried out for the first report and have not been re-surveyed.
+
+Table~\ref{tab:modulecoverage} lists the hospital services added in this phase and how each is supported in Care \& Cure HMS.
+
+\begin{table}[H]
+\centering
+\caption{Hospital Services Added in Version 2}
+\label{tab:modulecoverage}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|L{3.2cm}|C{1.3cm}|C{1.3cm}|L{6.4cm}|}
+\hline
+\rowcolor{blue!12}
+\textbf{Service} & \textbf{v1} & \textbf{v2} & \textbf{Key capability in v2} \\
+\hline
+Blood bank & $\times$ & \checkmark & Compatible FEFO issue, donor interval, expiry tracking, low-stock flag \\
+\hline
+Bed management & $\times$ & \checkmark & Live occupancy per ward, admission and discharge, DB-level double-allocation guard \\
+\hline
+Emergency triage & $\times$ & \checkmark & ESI levels 1--5, severity-ordered queue, direct admission to a bed \\
+\hline
+Teleconsultation & $\times$ & \checkmark & Private video room per appointment, timed join window, payment check \\
+\hline
+Notifications & $\times$ & \checkmark & In-app alerts for bookings, admissions, payments and critical arrivals \\
+\hline
+Indoor navigation & $\times$ & \checkmark & Shortest and step-free routes across floors with turn-by-turn steps \\
+\hline
+Online payment & $\times$ & \checkmark & Razorpay checkout, signature verification, idempotent webhooks, admin ledger \\
+\hline
+\end{tabular}
+\end{table}

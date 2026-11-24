@@ -1,0 +1,59 @@
+\section{Prerequisites}
+
+\begin{itemize}
+    \item Node.js 20 or later and npm.
+    \item MySQL 8 (or MariaDB 10.4+, for example through XAMPP or MAMP).
+    \item Optional: Redis 7 for caching, Docker and docker-compose for the containerised setup, and Google Chrome for the end-to-end tests.
+    \item A Google Gemini API key for MediBot. Razorpay test keys are optional: without them, payments run in mock mode in development.
+\end{itemize}
+
+\section{Running Locally}
+
+\begin{lstlisting}[language=bash, caption=Backend Setup]
+cd backend
+npm install
+cp .env.example .env      # set DB_*, JWT_SECRET, JWT_REFRESH_SECRET, GEMINI_API_KEY
+npm run db:migrate        # applies schema.sql and all migrations
+npm run dev               # API on http://localhost:5001
+node seedData.js          # optional: more sample doctors and slots
+npm run db:seed-demo      # optional: demo patients, visits, beds, blood (runs once)
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash, caption=Frontend Setup]
+cd frontend
+npm install
+npm run dev               # http://localhost:5173, proxies /api to :5001
+\end{lstlisting}
+
+\section{Running with Docker}
+
+\begin{lstlisting}[language=bash, caption=Complete Stack with docker-compose]
+cp backend/.env.example backend/.env   # fill in secrets
+docker-compose up --build              # MySQL, Redis, backend, frontend
+# open http://localhost:8080 ; migrations run automatically on start
+\end{lstlisting}
+
+\section{Running the Tests}
+
+\begin{lstlisting}[language=bash, caption=Test Commands]
+cd backend
+npm test                  # unit tests (no database needed)
+npm run test:integration  # creates hms_db_test and runs integration tests
+npm run lint
+
+cd ../frontend
+npm test                  # Vitest component and contract tests
+npm run test:e2e          # Playwright; starts backend (mock payments) and Vite
+npm run lint && npm run build
+\end{lstlisting}
+
+The integration and end-to-end tests need a local MySQL whose credentials are in \texttt{backend/.env.test}; the test database name must contain \texttt{test}, because it is dropped and recreated. Redis is optional; only the cache test needs it. Variables already set in the shell take precedence over \texttt{.env.test}, so a different local password can be passed as \texttt{DB\_PASSWORD=... npm run test:integration}.
+
+\section{Deploying}
+
+\begin{enumerate}
+    \item Create a MySQL service on Aiven and note its host, port, user, password and CA certificate.
+    \item On Render, create a Blueprint from the repository; \texttt{render.yaml} defines the Docker web service. Enter the database variables (with \texttt{DB\_SSL=true}), the JWT secrets, \texttt{GEMINI\_API\_KEY}, \texttt{CORS\_ORIGIN}, \texttt{TRUST\_PROXY\_HOPS=2}, the Razorpay keys (without them payments and video bookings are disabled in production) and the three \texttt{JAAS\_*} keys for embedded video. The Blueprint also creates the Redis instance.
+    \item On Vercel, import the \texttt{frontend} folder. \texttt{vercel.json} rewrites \texttt{/api} to the Render URL and sets the security headers; \texttt{VITE\_BACKEND\_URL} must stay unset so that the rewrite is used.
+    \item In the GitHub repository, set the \texttt{BACKEND\_HEALTH\_URL} variable to the Render URL followed by \texttt{/api/health} to enable the keep-alive workflow.
+\end{enumerate}
