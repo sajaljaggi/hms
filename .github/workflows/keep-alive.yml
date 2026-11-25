@@ -40,7 +40,7 @@ jobs:
             exit 1
           fi
 
-          response=$(curl -sf --connect-timeout 10 --max-time 30 "${{ vars.BACKEND_HEALTH_URL }}")
+          response=$(curl -sf --connect-timeout 10 --max-time 60 "${{ vars.BACKEND_HEALTH_URL }}")
           curl_status=$?
 
           if [ $curl_status -ne 0 ]; then
